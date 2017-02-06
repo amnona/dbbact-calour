@@ -3,7 +3,7 @@ import webbrowser
 from logging import getLogger
 
 from calour.util import get_config_value
-from calour.database.database import Database
+from calour.database import Database
 from . import dbannotation
 
 logger = getLogger(__name__)
@@ -11,7 +11,7 @@ logger = getLogger(__name__)
 
 class DBBact(Database):
     def __init__(self):
-        super().__init__(database_name='dbBact', methods=['get', 'annotate'])
+        super().__init__(database_name='dbBact', methods=['get', 'annotate', 'feature_terms'])
 
         # Web address of the bact server
         self.dburl = 'http://amnonim.webfactional.com/scdb_main'
@@ -451,3 +451,21 @@ class DBBact(Database):
         '''
         logger.debug('adding annotation for %d features' % len(features))
         dbannotation.annotate_bacteria_gui(self, features, exp)
+
+    def get_feature_terms(self, features, exp=None):
+        '''Get list of terms per feature
+
+        Parameters
+        ----------
+        features : list of str
+            the features to get the terms for
+        exp : calour.Experiment (optional)
+            not None to store results inthe exp (to save time for multiple queries)
+
+        Returns
+        -------
+        feature_terms : dict of list of str/int
+            key is the feature, list contains all terms associated with the feature
+        '''
+        sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(features)
+        return sequence_annotations

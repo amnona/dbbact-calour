@@ -55,7 +55,6 @@ def annotate_bacteria_gui(db, seqs, exp):
     '''
 
     # test if study already in database
-    db = dbbact.DBBact()
     cdata = db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['map_md5'])
     if cdata is None:
         print('get study data!')
