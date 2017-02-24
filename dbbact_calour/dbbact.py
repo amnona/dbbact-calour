@@ -480,3 +480,30 @@ class DBBact(Database):
         return new_annotations
         # return sequence_annotations
         # return sequence_terms
+
+    def delete_annotation(self, data):
+        '''Delete the annotation from the database
+        Tries to delete the annotation using the username/password from the config file.
+        A user can only delete the annotations he created or anonymous annotations.
+        Otherwise, an error will be returned
+
+        Parameters
+        ----------
+        data : dict
+            The annotationdetails to delete (using the 'annotationid' key)
+
+        Returns
+        -------
+        str:
+            empty if ok, non empty string if error encountered
+        '''
+        if 'annotationid' not in data:
+            return 'No annotationID for selected annotation'
+        rdata = {}
+        rdata['annotationid'] = data['annotationid']
+        res = self._post('annotations/delete', rdata)
+        if res.status_code != 200:
+            msg = 'Deletion failed. error %s' % res.content
+            logger.warn(msg)
+            return msg
+        return ''
