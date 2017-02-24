@@ -499,11 +499,13 @@ class DBBact(Database):
         '''
         if 'annotationid' not in data:
             return 'No annotationID for selected annotation'
+        annotationid = data['annotationid']
         rdata = {}
-        rdata['annotationid'] = data['annotationid']
+        rdata['annotationid'] = annotationid
         res = self._post('annotations/delete', rdata)
         if res.status_code != 200:
             msg = 'Deletion failed. error %s' % res.content
             logger.warn(msg)
             return msg
+        logger.info('annotation %d deleted' % annotationid)
         return ''
