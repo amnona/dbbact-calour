@@ -387,6 +387,7 @@ class DBBact(Database):
         annotations : dict of {annotationID : annotation_details}
             key is annotaitonID (int), value is the dict of annotation details.
         '''
+        logger.debug('getting dbbact compact annottions for %d sequences' % len(sequences))
         rdata = {}
         rdata['sequences'] = list(sequences)
         res = self._get('sequences/get_fast_annotations', rdata)
@@ -420,6 +421,7 @@ class DBBact(Database):
         for cid in keys:
             annotations[int(cid)] = annotations.pop(cid)
 
+        logger.debug('got %d annotations' % (len(annotations)))
         return sequence_terms, sequence_annotations, res['annotations']
 
     def show_annotation_info(self, annotation):
@@ -468,4 +470,13 @@ class DBBact(Database):
             key is the feature, list contains all terms associated with the feature
         '''
         sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(features)
-        return sequence_annotations
+        new_annotations = {}
+        for cseq, annotations_list in sequence_annotations.items():
+            newdesc = []
+            for cannotation in annotations_list:
+                cdesc = self.get_annotation_string(annotations[cannotation])
+                newdesc.append(cdesc)
+            new_annotations[cseq] = newdesc
+        return new_annotations
+        # return sequence_annotations
+        # return sequence_terms
