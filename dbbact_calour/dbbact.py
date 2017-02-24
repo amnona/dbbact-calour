@@ -452,7 +452,8 @@ class DBBact(Database):
         -------
         '''
         logger.debug('adding annotation for %d features' % len(features))
-        dbannotation.annotate_bacteria_gui(self, features, exp)
+        res = dbannotation.annotate_bacteria_gui(self, features, exp)
+        return res
 
     def get_feature_terms(self, features, exp=None):
         '''Get list of terms per feature

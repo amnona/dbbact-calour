@@ -52,6 +52,11 @@ def annotate_bacteria_gui(db, seqs, exp):
         the sequences to add to the database
     exp : Experiment
         Experiment containing the sample and experiment metadata (i.e. md5 etc.)
+
+    Returns
+    -------
+    str
+        empty if ok, error details str if error enoucntered
     '''
 
     # test if study already in database
@@ -60,8 +65,9 @@ def annotate_bacteria_gui(db, seqs, exp):
         print('get study data!')
         cdata = study_data_ui(exp)
         if cdata is None:
-            logger.warn('no study information - cannot annotate')
-            return
+            msg = 'no study information - cannot annotate'
+            logger.warn(msg)
+            return msg
 
     app, app_created = init_qt5()
     ui = DBAnnotateSave(seqs, exp)
@@ -101,18 +107,25 @@ def annotate_bacteria_gui(db, seqs, exp):
             else:
                 annotation_type = 'OTHER'
         else:
-            logger.warn("No annotation type selected. Annotation not saved")
-            return
+            msg = "No annotation type selected. Annotation not saved"
+            logger.warn(msg)
+            return msg
 
         logger.debug('Adding annotation to studyid %s' % cdata)
-        db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
-
+        res = db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
+        if res is None:
+            msg = 'Annotation not added.'
+            logger.warn(msg)
+            return msg
+        logger.debug('New annotation added. AnnotationId=%d' % res)
         # # store the history
         # try:
         #     hs.lastcurations.append(curations)
         # except:
         #     hs.lastcurations=[curations]
         # hs.lastdatamd5=self.cexp.datamd5
+        return ''
+    return 'Add annotation cancelled'
 
 
 def study_data_ui(cexp):
