@@ -42,7 +42,7 @@ def init_qt5():
 
 
 def annotate_bacteria_gui(db, seqs, exp):
-    '''Create a dialog for annotating the bacteria into BADB
+    '''Create a dialog for annotating the bacteria into dbbact
 
     Parameters
     ----------
@@ -62,10 +62,10 @@ def annotate_bacteria_gui(db, seqs, exp):
     # test if study already in database
     cdata = db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['map_md5'])
     if cdata is None:
-        print('get study data!')
+        logger.info('Study does not exist in dbbact. Creating new study')
         cdata = study_data_ui(exp)
         if cdata is None:
-            msg = 'no study information - cannot annotate'
+            msg = 'no study information added. Please add at least one field. Annotation cancelled'
             logger.warn(msg)
             return msg
 
@@ -247,6 +247,42 @@ class DBStudyInfo(QtWidgets.QDialog):
 
     def annotations(self):
         pass
+
+    def inputCheck(self):
+        '''Validate the new study information is good enough
+        We link here from the accept slot
+
+        Returns
+        -------
+        str
+        '' (empty string) if details valid, non-empty error string if problem encountered
+        '''
+        # get all the details about the study
+        newstudydata = []
+        allstudydata = []
+        name_found = False
+        for citem in qtlistiteritems(self.blist):
+            cdata = qtlistgetdata(citem)
+            if cdata['type'].lower() == 'name':
+                name_found = True
+            allstudydata.append((cdata['type'], cdata['value']))
+            if cdata['fromdb'] == False:
+                newstudydata.append((cdata['type'], cdata['value']))
+        # validate we have something else than the md5 for data/map
+        if len(allstudydata) <= 2:
+            return 'Please enter an identifier for the study (name recommended)'
+        if not name_found:
+            if QtWidgets.QMessageBox.warning(self, 'Study information missing', '"name" field not supplied Do you want to continue?',
+                                             QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
+                return 'Missing name field'
+        return ''
+
+    def accept(self):
+        err = self.inputCheck()
+        if err == '':
+            self.done(1)
+        else:
+            logger.warn(err)
 
 
 class DBAnnotateSave(QtWidgets.QDialog):
@@ -440,6 +476,45 @@ class DBAnnotateSave(QtWidgets.QDialog):
             return('LOW')
         if self.bhigh.isChecked():
             return('HIGH')
+
+    def accept(self):
+        err = self.inputCheck()
+        if err == '':
+            self.done(1)
+        else:
+            logger.warn(err)
+
+    def inputCheck(self):
+        '''Validate we have enough information in the annotation
+        We link here from the accept slot
+
+        Returns
+        -------
+        str
+        '' (empty string) if details valid, non-empty error string if problem encountered
+        '''
+        # check we have details
+        if len(list(qtlistiteritems(self.blistall))) == 0:
+            return ('No entries in annotation')
+
+        # if small amount of details, verify
+        if len(list(qtlistiteritems(self.blistall))) < 3:
+            if QtWidgets.QMessageBox.warning(self, 'Submit annotation?', 'Less than three entries for the annotation. Do you want to submit?',
+                                             QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
+                return 'Fill more entries'
+
+        # if differential expression, check there is high and low
+        if self.bdiffpres.isChecked():
+            types = set()
+            for citem in qtlistiteritems(self.blistall):
+                cdat = qtlistgetdata(citem)
+                ctype = cdat['type'].lower()
+                types.add(ctype)
+            if 'high' not in types:
+                return 'Missing "high" entries for differential abundance'
+            if 'low' not in types:
+                return 'Missing "low" entries value for differential abundance'
+        return ''
 
     def prefillinfo(self):
         """
