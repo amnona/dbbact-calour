@@ -76,6 +76,10 @@ class DBBact(Database):
         -------
         annotations : list of list of (annotation dict,list of [Type,Value] of annotation details)
             See dbBact sequences/get_annotations REST API documentation
+        term_info : dict of {term: info}
+            where key (str) is the ontology term, info is a dict of details containing:
+                'total_annotations' : total annotations having this term in the database
+                'total_sequences' : number of annotations with this term for the sequence
         '''
         rdata = {}
         rdata['sequence'] = sequence
@@ -83,9 +87,11 @@ class DBBact(Database):
         if res.status_code != 200:
             logger.warn('error getting annotations for sequence %s' % sequence)
             return []
-        annotations = res.json()['annotations']
+        res = res.json()
+        annotations = res.get('annotations')
+        term_info = res.get('term_info')
         logger.debug('Found %d annotations for sequence %s' % (len(annotations), sequence))
-        return annotations
+        return annotations, term_info
 
     def get_annotation_string(self, cann):
         '''Get nice string summaries of annotation
@@ -158,7 +164,22 @@ class DBBact(Database):
                     a short summary of the annotation
         '''
         shortdesc = []
-        annotations = self.get_seq_annotations(sequence)
+        annotations, term_info = self.get_seq_annotations(sequence)
+        if len(term_info) > 0:
+            terms = []
+            for cterm, cinfo in term_info.items():
+                terms.append([cterm, cinfo.get('total_sequences'), cinfo.get('total_annotations')])
+            terms = sorted(terms, key=lambda x: x[1])
+            terms = sorted(terms, key=lambda x: -x[2])
+            summary = 'most: '
+            for cterm in terms[:min(4, len(terms))]:
+                summary += '%s, ' % cterm[0]
+            shortdesc.append(({'annotationtype': 'other'}, summary))
+            summary = 'special: '
+            terms = sorted(terms, key=lambda x: -x[2]/x[1])
+            for cterm in terms[:min(4, len(terms))]:
+                summary += '%s, ' % cterm[0]
+            shortdesc.append(({'annotationtype': 'other'}, summary))
         for cann in annotations:
             cdesc = self.get_annotation_string(cann)
             shortdesc.append((cann, cdesc))
@@ -509,4 +530,60 @@ class DBBact(Database):
             logger.warn(msg)
             return msg
         logger.info('annotation %d deleted' % annotationid)
+        return ''
+
+    def get_user_id(self):
+        '''Get the userid for the username/password
+        Uses self.username, self.password
+
+        Returns
+        -------
+        int or None
+        the userid (0 is anonymous) or None if error encountered
+        '''
+        res = self._post('users/get_user_id', rdata={})
+        if res.status_code != 200:
+            logger.debug('get_user_id failed. User/pwd incorrect')
+            return None
+        res = res.json()
+        return res.get('user')
+
+    def register_user(self, user, pwd, email='', description='', publish='n', name=''):
+        '''Register a new user in the database
+
+        Parameters
+        ----------
+        user : str
+            the username
+        pwd : str
+            the password for the user
+        email : str (optional)
+            the recovery and notification email
+        description : str (optional)
+            type of user (can be researcher/curious/etc)
+        publish : str (optional)
+            'n' (default) to hide the email from other users,
+            'y' to enable other users to see the email
+        name : str (optional)
+            name of the user
+
+        Returns
+        -------
+        err : str
+            empty if ok or the error encountered
+        '''
+        rdata = {}
+        rdata['email'] = email
+        rdata['description'] = description
+        rdata['name'] = name
+        rdata['publish'] = publish
+        self.username = user
+        self.password = pwd
+
+        res = self._post('users/register_user', rdata=rdata)
+        if res.status_code != 200:
+            msg = 'Error registering user: %s' % res.content
+            logger.debug(msg)
+            return msg, 0
+        logger.debug('new user %s registered' % user)
         return ''

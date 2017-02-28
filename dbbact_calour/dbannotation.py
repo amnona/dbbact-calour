@@ -7,6 +7,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 import pandas as pd
+from calour.util import get_config_value, set_config_value
 
 from . import dbbact
 
@@ -58,6 +59,10 @@ def annotate_bacteria_gui(db, seqs, exp):
     str
         empty if ok, error details str if error enoucntered
     '''
+    app, app_created = init_qt5()
+
+    # test if we have user/password set-up
+    test_user_password(db)
 
     # test if study already in database
     cdata = db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['map_md5'])
@@ -69,7 +74,6 @@ def annotate_bacteria_gui(db, seqs, exp):
             logger.warn(msg)
             return msg
 
-    app, app_created = init_qt5()
     ui = DBAnnotateSave(seqs, exp)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
@@ -126,6 +130,44 @@ def annotate_bacteria_gui(db, seqs, exp):
         # hs.lastdatamd5=self.cexp.datamd5
         return ''
     return 'Add annotation cancelled'
+
+
+def test_user_password(db):
+    '''
+    Test if the config file has user/password and if not ask for one.
+    Also don't ask if the 'ask again' checkbox is checked
+
+    Parameters
+    ----------
+    db : DBBact
+        the database interface class
+    '''
+    username = get_config_value('username', section='dbBact')
+    if username is not None:
+        return
+    if get_config_value('show_user_request', section='dbBact') is not None:
+        logger.debug('user/password not set, but show_user_request flag in config file is set, so ignoring')
+        return
+    ui = UserPasswordDlg()
+    res = ui.exec_()
+    if res == QtWidgets.QDialog.Accepted:
+        username = str(ui.username.text())
+        password = str(ui.password.text())
+        db.username = username
+        db.password = password
+        userid = db.get_user_id()
+        if userid is None:
+            logger.debug('userid/password not found. Registering')
+            email = str(ui.email.text())
+            description = str(ui.interest.currentText())
+            err = db.register_user(username, password, email=email, description=description, publish='n', name='')
+            if err:
+                logger.warn(err)
+                return
+
+        logger.info('storing username %s in config file' % username)
+        set_config_value('username', username, section='dbBact')
+        set_config_value('password', password, section='dbBact')
 
 
 def study_data_ui(cexp):
@@ -503,13 +545,15 @@ class DBAnnotateSave(QtWidgets.QDialog):
                                              QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
                 return 'Fill more entries'
 
+        # get the annotations
+        types = set()
+        for citem in qtlistiteritems(self.blistall):
+            cdat = qtlistgetdata(citem)
+            ctype = cdat['type'].lower()
+            types.add(ctype)
+
         # if differential expression, check there is high and low
         if self.bdiffpres.isChecked():
-            types = set()
-            for citem in qtlistiteritems(self.blistall):
-                cdat = qtlistgetdata(citem)
-                ctype = cdat['type'].lower()
-                types.add(ctype)
             if 'high' not in types:
                 return 'Missing "high" entries for differential abundance'
             if 'low' not in types:
@@ -625,34 +669,24 @@ def qtlistiteritems(qtlist):
         yield qtlist.item(i)
 
 
-def showannotationdata(annotationdetails):
-    """
-    show the list of annotation details and the sequences associated with it
+class UserPasswordDlg(QtWidgets.QDialog):
+    '''Show/get details about a study
+    '''
+    def __init__(self):
+        '''Init the values in the study info dialog
 
-    intput:
-    annotationdetails : dict
-        dict of various fields of the annotation (includeing annotationid)
-        from scdb.getannotationstrings()
-    cexp : experiment
-        the experiment (for rhe scdb pointer)
-    """
-    info = []
-    if annotationdetails is None:
-        return
-    for k, v in annotationdetails.items():
-        if type(v) == list:
-            for cv in v:
-                info.append('%s:%s' % (k, cv))
-        else:
-            info.append('%s:%s' % (k, v))
-    # get the annotation sequences:
-    if 'annotationid' in annotationdetails:
-        seqs = hs.supercooldb.getannotationseqs(hs.scdb, annotationdetails['annotationid'])
-        info.append('sequences: %d' % len(seqs))
-    # get the experiment details:
-    if 'expid' in annotationdetails:
-        expinfo = hs.supercooldb.getexperimentinfo(hs.scdb, annotationdetails['expid'])
-        for cinfo in expinfo:
-            info.append('experiment %s:%s' % (cinfo[0], cinfo[1]))
-    slistwin = SListWindow(info, 'Annotation details')
-    slistwin.exec_()
+        '''
+        super().__init__()
+        uic.loadUi(resource_filename(__package__, 'ui/user_password.ui'), self)
+        self.login.clicked.connect(self.login_func)
+        self.anonymous.clicked.connect(self.anonymous_func)
+
+    def login_func(self):
+        if self.email.text() == '':
+            if QtWidgets.QMessageBox.warning(self, 'email missing', 'No email supplied, you will not be able to recover your password.\nContinue?',
+                                             QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
+                return
+        self.accept()
+
+    def anonymous_func(self):
+        self.close()
