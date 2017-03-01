@@ -14,6 +14,11 @@ from . import dbbact
 
 logger = getLogger(__name__)
 
+# the global variable to store annotation history
+# for autofill of 'ALL' details
+# key is the md5 of the data, value is the annotations
+history = {}
+
 
 def init_qt5():
     '''Init the qt5 event loop
@@ -122,12 +127,10 @@ def annotate_bacteria_gui(db, seqs, exp):
             logger.warn(msg)
             return msg
         logger.debug('New annotation added. AnnotationId=%d' % res)
-        # # store the history
-        # try:
-        #     hs.lastcurations.append(curations)
-        # except:
-        #     hs.lastcurations=[curations]
-        # hs.lastdatamd5=self.cexp.datamd5
+
+        # store the history
+        global history
+        history[exp.exp_metadata['data_md5']] = {'annotations': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
         return ''
     return 'Add annotation cancelled'
 
@@ -356,7 +359,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.bisa.toggled.connect(self.radiotoggle)
         self.bdiffpres.toggled.connect(self.radiotoggle)
         self.bisatype.currentIndexChanged.connect(self.isatypechanged)
-        self.bhistory.clicked.connect(self.history)
+        # self.bhistory.clicked.connect(self.history)
         self.cexp = expdat
         self.lnumbact.setText(str(len(selected_features)))
         completer = QtWidgets.QCompleter()
@@ -375,12 +378,13 @@ class DBAnnotateSave(QtWidgets.QDialog):
         model.setStringList(self._ontology_sorted_list)
 
         self.setWindowTitle(expdat.description)
-        # try:
-        #   tt=hs.lastdatamd5
-        # except:
-        #   hs.lastdatamd5=''
-        # if self.cexp.datamd5==hs.lastdatamd5:
-        #   self.fillfromcuration(hs.lastcurations[-1],onlyall=True)
+
+        # try to autofill from history if experiment annotated
+        global history
+        expmd5 = expdat.exp_metadata['data_md5']
+        if expmd5 in history:
+            logger.debug('Filling annotation details from history')
+            self.fill_from_annotation(history[expmd5], onlyall=True)
 
         self.prefillinfo()
         self.bontoinput.setFocus()
@@ -399,40 +403,51 @@ class DBAnnotateSave(QtWidgets.QDialog):
             ontology_from_id_file = resource_filename(__package__, 'data/ontologyfromid.pickle')
             DBAnnotateSave._ontology_from_id = pickle.load(open(ontology_from_id_file, 'rb'))
 
-    def history(self):
-        curtext = []
-        for cur in hs.lastcurations:
-            ct = ''
-            for dat in cur:
-                ct += dat[0] + '-' + dat[1] + ','
-            curtext.append(ct)
-        slistwin = SListWindow(curtext, 'select curation from history')
-        res = slistwin.exec_()
-        if res:
-            items = slistwin.lList.selectedItems()
-            for citem in items:
-                print(citem)
-                spos = slistwin.lList.row(citem)
-                print(spos)
-                self.fillfromcuration(hs.lastcurations[spos], onlyall=False)
+    # def history(self):
+    #     curtext = []
+    #     for cur in hs.lastcurations:
+    #         ct = ''
+    #         for dat in cur:
+    #             ct += dat[0] + '-' + dat[1] + ','
+    #         curtext.append(ct)
+    #     slistwin = SListWindow(curtext, 'select curation from history')
+    #     res = slistwin.exec_()
+    #     if res:
+    #         items = slistwin.lList.selectedItems()
+    #         for citem in items:
+    #             print(citem)
+    #             spos = slistwin.lList.row(citem)
+    #             print(spos)
+    #             self.fillfromcuration(hs.lastcurations[spos], onlyall=False)
 
-    def fillfromcuration(self, curation, onlyall=True, clearit=True):
-        """
-        fill gui list from curation
-        input:
-        curation : from hs.lastcurations
+    def fill_from_annotation(self, annotation, onlyall=True, clearit=True):
+        """Fill gui list from annotation list
+
+        Parameters
+        ----------
+        annotation : dict containing:
+            'annotations': list of (annotation type, annotation)
+            'description' : str
+            'method' : str
+            'annotation_type' : str
+            'primerid' : str
         onlyall : bool
-            True to show only curations which have ALL, False to show also HIGH/LOW
+            True to show only annotations which have ALL, False to show also HIGH/LOW
         clearit : bool
-            True to remove previous curations from list, False to keep
+            True to remove previous annotations from list, False to keep
         """
         if clearit:
             self.blistall.clear()
-        for cdat in curation:
-            if onlyall:
-                if cdat[0] != 'ALL':
-                    continue
-            self.addtolist(cdat[0], cdat[1])
+        if 'annotations' in annotation:
+            for cdat in annotation['annotations']:
+                if onlyall:
+                    if cdat[0] != 'ALL':
+                        continue
+                self.addtolist(cdat[0], cdat[1])
+        if 'description' in annotation:
+            self.bdescription.setText(annotation['description'])
+        if 'method' in annotation:
+            self.bmethod.setText(annotation['method'])
 
     def radiotoggle(self):
         if self.bisa.isChecked():
