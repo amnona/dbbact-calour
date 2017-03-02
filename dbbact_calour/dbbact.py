@@ -4,7 +4,6 @@ from logging import getLogger
 
 from calour.util import get_config_value
 from calour.database import Database
-from . import dbannotation
 
 logger = getLogger(__name__)
 
@@ -472,6 +471,8 @@ class DBBact(Database):
         Returns
         -------
         '''
+        from . import dbannotation
+
         logger.debug('adding annotation for %d features' % len(features))
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
