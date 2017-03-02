@@ -13,7 +13,8 @@ class DBBact(Database):
         super().__init__(database_name='dbBact', methods=['get', 'annotate', 'feature_terms'])
 
         # Web address of the bact server
-        self.dburl = 'http://amnonim.webfactional.com/scdb_main'
+        self.dburl = 'http://dbbact.org/REST-API'
+        # self.dburl = 'http://amnonim.webfactional.com/scdb_main'
         # self.dburl = 'http://amnonim.webfactional.com/scdb_develop'
         self.username = get_config_value('username', section='dbBact')
         self.password = get_config_value('password', section='dbBact')
