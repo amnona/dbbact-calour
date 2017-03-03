@@ -174,12 +174,12 @@ class DBBact(Database):
             summary = 'most: '
             for cterm in terms[:min(4, len(terms))]:
                 summary += '%s, ' % cterm[0]
-            shortdesc.append(({'annotationtype': 'other'}, summary))
+            shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
             summary = 'special: '
             terms = sorted(terms, key=lambda x: -x[2]/x[1])
             for cterm in terms[:min(4, len(terms))]:
                 summary += '%s, ' % cterm[0]
-            shortdesc.append(({'annotationtype': 'other'}, summary))
+            shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
         for cann in annotations:
             cdesc = self.get_annotation_string(cann)
             shortdesc.append((cann, cdesc))
@@ -456,7 +456,13 @@ class DBBact(Database):
         # open in a new tab, if possible
         new = 2
 
-        address = '%s/annotation_info/%d' % (self.web_interface, annotation['annotationid'])
+        if 'annotationid' in annotation:
+            address = '%s/annotation_info/%d' % (self.web_interface, annotation['annotationid'])
+        elif 'sequence' in annotation:
+            address = '%s/sequence_annotations/%s' % (self.web_interface, annotation['sequence'])
+        else:
+            logger.debug('Cannot show annotation info')
+            return
         webbrowser.open(address, new=new)
 
     def add_annotation(self, features, exp):
