@@ -7,7 +7,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 import pandas as pd
-from calour.util import get_config_value, set_config_value
+from calour.util import get_config_value, set_config_value, get_config_file
 
 from . import dbbact
 
@@ -130,9 +130,72 @@ def annotate_bacteria_gui(db, seqs, exp):
 
         # store the history
         global history
-        history[exp.exp_metadata['data_md5']] = {'annotations': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        history[exp.exp_metadata['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
         return ''
     return 'Add annotation cancelled'
+
+
+def update_annotation_gui(db, annotation, exp):
+    '''Update an existing annotation
+    '''
+    app, app_created = init_qt5()
+
+    # test if we have user/password set-up
+    test_user_password(db)
+
+    annotationid = annotation['annotationid']
+    primerid = annotation.get('primerid')
+
+    ui = DBAnnotateSave([], exp, prefill_annotation=annotation)
+    res = ui.exec_()
+    if res == QtWidgets.QDialog.Accepted:
+        description = str(ui.bdescription.text())
+        method = str(ui.bmethod.text())
+        if method == '':
+            method = 'na'
+        # TODO: fix submitter name
+        annotations = []
+
+        for citem in qtlistiteritems(ui.blistall):
+            cdat = qtlistgetdata(citem)
+            cval = cdat['value']
+            ctype = cdat['type']
+            # convert synonyms to original ontology terms
+            if cval in DBAnnotateSave._ontology_from_id:
+                cval = DBAnnotateSave._ontology_from_id[cval]
+            else:
+                logger.debug("item %s not found in ontologyfromid" % cval)
+            annotations.append((ctype, cval))
+        # get annotation type
+        if ui.bdiffpres.isChecked():
+            annotation_type = 'DIFFEXP'
+        elif ui.bisa.isChecked():
+            curtypeval = ui.bisatype.currentText()
+            if 'Common' in curtypeval:
+                annotation_type = 'COMMON'
+            elif 'Contam' in curtypeval:
+                annotation_type = 'CONTAMINATION'
+            elif 'High' in curtypeval:
+                annotation_type = 'HIGHFREQ'
+            else:
+                annotation_type = 'OTHER'
+        else:
+            msg = "No annotation type selected. Annotation not saved"
+            logger.warn(msg)
+            return msg
+        logger.debug('Updating annotations for annotationid %d' % annotationid)
+        res = db.send_update_annotation(annotationid=annotationid, annotationtype=annotation_type, annotations=annotations, description=description, method=method)
+        if res is None:
+            msg = 'Annotation not updated.'
+            logger.warn(msg)
+            return msg
+        logger.debug('Annotation updated.')
+
+        # store the history
+        global history
+        history[exp.exp_metadata['data_md5']] = {'annotations': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        return ''
+    return 'Update annotation cancelled'
 
 
 def test_user_password(db):
@@ -145,11 +208,21 @@ def test_user_password(db):
     db : DBBact
         the database interface class
     '''
+    logger.debug('Testing if user/pwd in config file')
     username = get_config_value('username', section='dbBact')
     if username is not None:
+        logger.debug('found user %s' % username)
         return
     if get_config_value('show_user_request', section='dbBact') is not None:
         logger.debug('user/password not set, but show_user_request flag in config file is set, so ignoring')
+        return
+    logger.debug('no username in config file')
+    if QtWidgets.QMessageBox.warning(None, 'Register/login for better annotation', 'You can add annotations as an anonymous user, '
+                                           'or register/login in order to create non-anonymous annotations.\n'
+                                           'NOTE: annonymous annotations can be modified/deleted by any user, '
+                                           'whereas non-annonymous annotations can be modified/deleted only by the user who created them.\n\n'
+                                           'Click "Yes" to register/login or "No" to continue as annonymous user',
+                                     QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
         return
     ui = UserPasswordDlg()
     res = ui.exec_()
@@ -166,6 +239,21 @@ def test_user_password(db):
             err = db.register_user(username, password, email=email, description=description, publish='n', name='')
             if err:
                 logger.warn(err)
+                QtWidgets.QMessageBox.warning(None, 'Login failed', 'login for user %s failed.\n'
+                                                    'You are now logged in as anonymous user.' % username)
+                return
+            QtWidgets.QMessageBox.information(None, 'Registered new user', 'New user %s registered in dbBact.\n'
+                                                    'You can change the Calour dbBact user/password in the config file:\n'
+                                                    '%s' % (username, get_config_file()))
+        else:
+            userid = db.get_user_id()
+            if userid is not None:
+                QtWidgets.QMessageBox.information(None, 'Logged in existing user', 'user %s logged into dbBact.\n'
+                                                        'You can change the Calour dbBact user/password in the config file:\n'
+                                                        '%s' % (username, get_config_file()))
+            else:
+                QtWidgets.QMessageBox.warning(None, 'Login failed', 'login for user %s failed.\n'
+                                                    'You are now logged in as anonymous user.' % username)
                 return
 
         logger.info('storing username %s in config file' % username)
@@ -315,6 +403,7 @@ class DBStudyInfo(QtWidgets.QDialog):
                 newstudydata.append((cdata['type'], cdata['value']))
         # validate we have something else than the md5 for data/map
         if len(allstudydata) <= 2:
+            QtWidgets.QMessageBox.warning(self, 'Missing study information', 'Please enter an identifier for the study (name recommended)')
             return 'Please enter an identifier for the study (name recommended)'
         if not name_found:
             if QtWidgets.QMessageBox.warning(self, 'Study information missing', '"name" field not supplied Do you want to continue?',
@@ -338,7 +427,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
     # used to store the ontology values for the autocomplete
     _ontology_dict = None
 
-    def __init__(self, selected_features, expdat):
+    def __init__(self, selected_features, expdat, prefill_annotation=None):
         '''Create the manual annotation window
 
         Parameters
@@ -347,6 +436,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
             The sequences to annotate
         expdat : Experiment
             The experiment being annotated
+        prefill_annotation : dict or None (optional)
+            None (default) to prefill from history
+            dict to pre-fill using dict fields instead
         '''
         super(DBAnnotateSave, self).__init__()
 
@@ -379,14 +471,18 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
         self.setWindowTitle(expdat.description)
 
-        # try to autofill from history if experiment annotated
-        global history
-        expmd5 = expdat.exp_metadata['data_md5']
-        if expmd5 in history:
-            logger.debug('Filling annotation details from history')
-            self.fill_from_annotation(history[expmd5], onlyall=True)
+        if prefill_annotation is None:
+            # try to autofill from history if experiment annotated
+            global history
+            expmd5 = expdat.exp_metadata['data_md5']
+            if expmd5 in history:
+                logger.debug('Filling annotation details from history')
+                self.fill_from_annotation(history[expmd5], onlyall=True)
+        else:
+            logger.debug('Filling annotation details from supplied annotation')
+            self.fill_from_annotation(prefill_annotation, onlyall=False)
 
-        self.prefillinfo()
+        # self.prefillinfo()
         self.bontoinput.setFocus()
         self.show()
 
@@ -438,8 +534,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
         """
         if clearit:
             self.blistall.clear()
-        if 'annotations' in annotation:
-            for cdat in annotation['annotations']:
+        if 'details' in annotation:
+            for cdat in annotation['details']:
                 if onlyall:
                     if cdat[0] != 'ALL':
                         continue
@@ -516,13 +612,13 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 logger.debug('item already in list')
                 return
 
-        if cgroup == 'LOW':
+        if cgroup.lower() == 'low':
             ctext = "LOW:%s" % conto
             qtlistadd(self.blistall, ctext, {'type': 'LOW', 'value': conto}, color='red')
-        if cgroup == 'HIGH':
+        if cgroup.lower() == 'high':
             ctext = "HIGH:%s" % conto
             qtlistadd(self.blistall, ctext, {'type': 'HIGH', 'value': conto}, color='blue')
-        if cgroup == 'ALL':
+        if cgroup.lower() == 'all':
             ctext = "ALL:%s" % conto
             qtlistadd(self.blistall, ctext, {'type': 'ALL', 'value': conto}, color='black')
 
@@ -552,6 +648,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         '''
         # check we have details
         if len(list(qtlistiteritems(self.blistall))) == 0:
+            QtWidgets.QMessageBox.warning(self, 'Missing information', 'No entries in annotation')
             return ('No entries in annotation')
 
         # if small amount of details, verify
@@ -570,9 +667,11 @@ class DBAnnotateSave(QtWidgets.QDialog):
         # if differential expression, check there is high and low
         if self.bdiffpres.isChecked():
             if 'high' not in types:
-                return 'Missing "high" entries for differential abundance'
+                msg = 'Missing "high" entries for differential abundance'
             if 'low' not in types:
-                return 'Missing "low" entries value for differential abundance'
+                msg = 'Missing "low" entries value for differential abundance'
+            QtWidgets.QMessageBox.warning(self, 'Missing information', msg)
+            return msg
         return ''
 
     def prefillinfo(self):

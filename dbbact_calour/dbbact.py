@@ -595,3 +595,45 @@ class DBBact(Database):
             return msg, 0
         logger.debug('new user %s registered' % user)
         return ''
+
+    def upadte_annotation(self, annotation, exp=None):
+        '''Update an existing annotation
+
+        Parameters
+        ----------
+        annotation : dict
+            The annotation to update (keys/values are database specific)
+        exp : ``Experiment`` (optional)
+            The calour experiment from which the annotation is coming from
+        Returns
+        -------
+        str
+            empty if ok, otherwise the error encountered
+        '''
+        from . import dbannotation
+        dbannotation.update_annotation_gui(self, annotation, exp)
+
+    def send_update_annotation(self, annotationid, annotationtype=None, annotations=None, description=None, method=None, private=None):
+        '''Update an annotation in the database
+
+        None indicates field will not be updated
+
+        Returns
+        -------
+        str
+            empty if ok, error string if error encountered
+        '''
+        rdata = {}
+        rdata['annotationId'] = annotationid
+        rdata['annotationType'] = annotationtype
+        rdata['annotationList'] = annotations
+        rdata['description'] = description
+        rdata['method'] = method
+        rdata['private'] = private
+        res = self._post('annotations/update', rdata)
+        if res.status_code == 200:
+            logger.debug('Finished updating annotationid %d' % annotationid)
+            return ''
+        msg = 'problem updating annotationid %d: %s' % (annotationid, res.content)
+        logger.warn(msg)
+        return msg
