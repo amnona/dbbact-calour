@@ -9,15 +9,15 @@ logger = getLogger(__name__)
 
 
 class DBBact(Database):
-    def __init__(self):
+    def __init__(self, exp=None):
         super().__init__(database_name='dbBact', methods=['get', 'annotate', 'feature_terms'])
 
         # Web address of the bact server
         self.dburl = 'http://dbbact.org/REST-API'
         # self.dburl = 'http://amnonim.webfactional.com/scdb_main'
         # self.dburl = 'http://amnonim.webfactional.com/scdb_develop'
-        self.username = get_config_value('username', section='dbBact')
-        self.password = get_config_value('password', section='dbBact')
+        self.username = get_config_value('username', section='dbbact')
+        self.password = get_config_value('password', section='dbbact')
         self.web_interface = 'http://dbbact.org'
 
     def _post(self, api, rdata):
@@ -391,6 +391,34 @@ class DBBact(Database):
         logger.debug(res.content)
         return None
 
+    def add_all_annotations_to_exp(self, exp):
+        '''Get annotations for all sequences in experiment and store them in it
+
+        Stores all the annotation details in exp.exp_metadata. Stored key/values are:
+        '__dbbact_sequence_terms' : dict of {sequence: list of terms}
+            key is sequence, value is list of ontology terms present in the bacteria.
+        '__dbbact_sequence_annotations' : dict of {sequence: list of annotationIDs}
+            key is sequence, value is list of annotationIDs present in the bacteria.
+        '__dbbact_annotations':  dict of {annotationID : annotation_details}
+            key is annotaitonID (int), value is the dict of annotation details.
+
+        Parameters
+        ----------
+        exp : ``Experiment``
+            The experiment to get the details for and store them in
+
+        Returns:
+        str
+        '' if ok, otherwise error string
+        '''
+        logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
+        sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(exp.feature_metadata.index.values)
+        exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
+        exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
+        exp.exp_metadata['__dbbact_annotations'] = annotations
+        logger.info('Added annotation data to experiment. Total %d annotations, %d terms' % (len(annotations), len(sequence_terms)))
+        return ''
+
     def get_seq_list_fast_annotations(self, sequences):
         '''Get annotations for all sequences in list using compact format and with parent ontology terms
 
@@ -408,7 +436,7 @@ class DBBact(Database):
         annotations : dict of {annotationID : annotation_details}
             key is annotaitonID (int), value is the dict of annotation details.
         '''
-        logger.debug('getting dbbact compact annottions for %d sequences' % len(sequences))
+        logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
         rdata = {}
         rdata['sequences'] = list(sequences)
         res = self._get('sequences/get_fast_annotations', rdata)
@@ -442,7 +470,11 @@ class DBBact(Database):
         for cid in keys:
             annotations[int(cid)] = annotations.pop(cid)
 
-        logger.debug('got %d annotations' % (len(annotations)))
+        total_annotations = 0
+        for cseq_annotations in sequence_annotations.values():
+            total_annotations += len(cseq_annotations)
+        logger.info('Got %d annotations' % total_annotations)
+
         return sequence_terms, sequence_annotations, res['annotations']
 
     def show_annotation_info(self, annotation):
@@ -492,16 +524,27 @@ class DBBact(Database):
         features : list of str
             the features to get the terms for
         exp : calour.Experiment (optional)
-            not None to store results inthe exp (to save time for multiple queries)
+            not None to store results in the exp (to save time for multiple queries)
 
         Returns
         -------
         feature_terms : dict of list of str/int
             key is the feature, list contains all terms associated with the feature
         '''
-        sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(features)
+        if exp is not None:
+            if '__dbbact_sequence_terms' not in exp.exp_metadata:
+                # if annotations not yet in experiment - add them
+                self.add_all_annotations_to_exp(exp)
+            # and filter only the ones relevant for features
+            sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
+            sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
+            annotations = exp.exp_metadata['__dbbact_annotations']
+        else:
+            sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(features)
         new_annotations = {}
         for cseq, annotations_list in sequence_annotations.items():
+            if cseq not in features:
+                continue
             newdesc = []
             for cannotation in annotations_list:
                 cdesc = self.get_annotation_string(annotations[cannotation])

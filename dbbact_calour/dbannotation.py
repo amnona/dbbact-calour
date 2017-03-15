@@ -209,11 +209,11 @@ def test_user_password(db):
         the database interface class
     '''
     logger.debug('Testing if user/pwd in config file')
-    username = get_config_value('username', section='dbBact')
+    username = get_config_value('username', section='dbbact')
     if username is not None:
         logger.debug('found user %s' % username)
         return
-    if get_config_value('show_user_request', section='dbBact') is not None:
+    if get_config_value('show_user_request', section='dbbact') is not None:
         logger.debug('user/password not set, but show_user_request flag in config file is set, so ignoring')
         return
     logger.debug('no username in config file')
@@ -257,8 +257,8 @@ def test_user_password(db):
                 return
 
         logger.info('storing username %s in config file' % username)
-        set_config_value('username', username, section='dbBact')
-        set_config_value('password', password, section='dbBact')
+        set_config_value('username', username, section='dbbact')
+        set_config_value('password', password, section='dbbact')
 
 
 def study_data_ui(cexp):
@@ -666,12 +666,14 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
         # if differential expression, check there is high and low
         if self.bdiffpres.isChecked():
+            msg = None
             if 'high' not in types:
                 msg = 'Missing "high" entries for differential abundance'
             if 'low' not in types:
                 msg = 'Missing "low" entries value for differential abundance'
-            QtWidgets.QMessageBox.warning(self, 'Missing information', msg)
-            return msg
+            if msg is not None:
+                QtWidgets.QMessageBox.warning(self, 'Missing information', msg)
+                return msg
         return ''
 
     def prefillinfo(self):
