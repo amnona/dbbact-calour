@@ -79,6 +79,21 @@ def annotate_bacteria_gui(db, seqs, exp):
             logger.warn(msg)
             return msg
 
+    show_and_ask('Please enter annotations for the study.\n'
+                 'Choose the annotation type. Annotations can be:\n'
+                 '"Differential abundance": High in one group compared to the other\n'
+                 '"Common": present in majority of the samples (prevalence)\n'
+                 '"High freq.": frequency of the bacteria is >1% (frequency)\n\n'
+                 'Then choose the terms (preferably from ontology autocomplete) relevant\n'
+                 'Note that for "Differential abundance", you need to choose the terms common to both groups (all),'
+                 'the terms in the group where the bacteria is higher (high) and where it is lower (low).\n'
+                 'For example, a fecal bacteria that is more common in females will be annotated as:\n'
+                 '"all": feces, homo sapience\n'
+                 '"low": male\n'
+                 '"high": female\n'
+                 'also, please supply as many terms as possible (host, material, country, disease, etc.)',
+                 keyval='annotation_info')
+
     ui = DBAnnotateSave(seqs, exp)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
@@ -289,6 +304,13 @@ def study_data_ui(cexp):
                 if len(pd.unique(cexp.sample_metadata[ccol].ravel())) == 1:
                     study_details.append((interesting_columns[ccol.lower()], cexp.sample_metadata[ccol][0]))
 
+    show_and_ask('Study is not in database.\n'
+                 '(based on data or mapping file md5)\n'
+                 'Please supply details that identify the source of the data\n'
+                 'Preferably a dataID (such as sra/qiita/etc)\n'
+                 'and the name of the study',
+                 keyval='study_info')
+
     dbsi = DBStudyInfo(cid, study_details=study_details)
     res = dbsi.exec_()
     if res == QtWidgets.QDialog.Accepted:
@@ -345,6 +367,7 @@ class DBStudyInfo(QtWidgets.QDialog):
         self.bvalue.returnPressed.connect(self.plus)
         self.bminus.clicked.connect(self.minus)
         self.bannotations.clicked.connect(self.annotations)
+        self.bvalue.returnPressed.connect(self.plus)
         # self.cexp=expdat
         # self.setWindowTitle(self.cexp.studyname)
         self.bvalue.setFocus()
@@ -806,3 +829,20 @@ class UserPasswordDlg(QtWidgets.QDialog):
 
     def anonymous_func(self):
         self.close()
+
+
+def show_and_ask(msg, keyval):
+    keyval = 'skip_msg_' + keyval
+    res = get_config_value(keyval, section='dbbact', fallback='no')
+    if res.lower() == 'yes':
+        return
+    a = QtWidgets.QMessageBox()
+    a.setText(msg)
+    a.setWindowTitle('dbBact-Calour')
+    a.setIcon(QtWidgets.QMessageBox.Information)
+    a.setStandardButtons(QtWidgets.QMessageBox.Ok)
+    cb = QtWidgets.QCheckBox(text="Don't show this again")
+    a.setCheckBox(cb)
+    a.exec_()
+    if cb.isChecked():
+        set_config_value(keyval, 'yes', section='dbbact')

@@ -1,16 +1,21 @@
 import requests
 import webbrowser
+from collections import defaultdict
 from logging import getLogger
+
+import numpy as np
+import pandas as pd
 
 from calour.util import get_config_value
 from calour.database import Database
+from calour.dsfdr import dsfdr
 
 logger = getLogger(__name__)
 
 
 class DBBact(Database):
     def __init__(self, exp=None):
-        super().__init__(database_name='dbBact', methods=['get', 'annotate', 'feature_terms'])
+        super().__init__(database_name='dbBact', methods=['get', 'annotate', 'enrichment'])
 
         # Web address of the bact server
         self.dburl = 'http://dbbact.org/REST-API'
@@ -172,11 +177,12 @@ class DBBact(Database):
             terms = sorted(terms, key=lambda x: x[1])
             terms = sorted(terms, key=lambda x: -x[2])
             summary = 'most: '
-            for cterm in terms[:min(4, len(terms))]:
-                summary += '%s, ' % cterm[0]
+            most_terms = self.get_common_annotation_term(annotations, term_info, num_common=5)
+            for cmterm in most_terms:
+                summary += cmterm + ', '
             shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
             summary = 'special: '
-            terms = sorted(terms, key=lambda x: -x[2]/x[1])
+            terms = sorted(terms, key=lambda x: x[2])
             for cterm in terms[:min(4, len(terms))]:
                 summary += '%s, ' % cterm[0]
             shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
@@ -184,6 +190,145 @@ class DBBact(Database):
             cdesc = self.get_annotation_string(cann)
             shortdesc.append((cann, cdesc))
         return shortdesc
+
+    def _get_all_annotation_string_counts(self, features, exp):
+        feature_annotations = {}
+        sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
+        annotations = exp.exp_metadata['__dbbact_annotations']
+        for cseq, annotations_list in sequence_annotations.items():
+            if cseq not in features:
+                continue
+            newdesc = []
+            for cannotation in annotations_list:
+                cdesc = self.get_annotation_string(annotations[cannotation])
+                newdesc.append((cdesc, 1))
+            feature_annotations[cseq] = newdesc
+        return feature_annotations
+
+    def _get_all_term_counts(self, features, feature_annotations, annotations):
+        feature_terms = {}
+        for cfeature in features:
+            annotation_list = [annotations[x] for x in feature_annotations[cfeature]]
+            feature_terms[cfeature] = self.get_annotation_term_counts(annotation_list)
+        return feature_terms
+
+    def get_annotation_term_counts(self, annotations):
+        '''Get the annotation type corrected count for all terms in annotations
+
+        Parameters
+        ----------
+        annotations : list of dict
+            list of annotations
+
+        Returns
+        -------
+            list of tuples (term, count)
+        '''
+        term_count = defaultdict(int)
+        for cannotation in annotations:
+            if cannotation['annotationtype'] == 'common':
+                for cdesc in cannotation['details']:
+                    term_count[cdesc[1]] += 1
+                continue
+            if cannotation['annotationtype'] == 'highfreq':
+                for cdesc in cannotation['details']:
+                    term_count[cdesc[1]] += 2
+                continue
+            if cannotation['annotationtype'] == 'other':
+                for cdesc in cannotation['details']:
+                    term_count[cdesc[1]] += 0.5
+                continue
+            if cannotation['annotationtype'] == 'contamination':
+                term_count['contamination'] += 1
+                continue
+            if cannotation['annotationtype'] == 'diffexp':
+                for cdesc in cannotation['details']:
+                    if cdesc[0] == 'all':
+                        term_count[cdesc[1]] += 1
+                        continue
+                    if cdesc[0] == 'high':
+                        term_count[cdesc[1]] += 2
+                        continue
+                    if cdesc[0] == 'low':
+                        term_count[cdesc[1]] -= 2
+                        continue
+                    logger.warn('unknown detail type %s encountered' % cdesc[0])
+                continue
+            if cannotation['annotationtype'] == 'other':
+                continue
+            logger.warn('unknown annotation type %s encountered' % cannotation['annotationtype'])
+        res = []
+        for k, v in term_count.items():
+            # flip and add '-' to term if negative
+            if v < 0:
+                k = '-' + k
+                v = -v
+            res.append((k, v))
+        return res
+
+    def get_common_annotation_term(self, annotations, term_info, num_common=5):
+        '''Get the most common term when combining all annotaions
+
+        Parameters
+        ----------
+        annotations : list of dict
+            The annotations to get the most common term from
+        term_info : dict (key is term, value is dict)
+            information about each term (total_sequences, total_annotations)
+        num_common : int (optional)
+            The number of common terms to return
+
+        Returns
+        -------
+        list of str
+            list of the num_common most common terms
+        '''
+        term_count = defaultdict(int)
+        for cannotation in annotations:
+            if cannotation['annotationtype'] == 'common':
+                for cdesc in cannotation['details']:
+                    term_count[cdesc[1]] += 1
+                continue
+            if cannotation['annotationtype'] == 'highfreq':
+                for cdesc in cannotation['details']:
+                    term_count[cdesc[1]] += 2
+                continue
+            if cannotation['annotationtype'] == 'other':
+                for cdesc in cannotation['details']:
+                    term_count[cdesc[1]] += 0.5
+                continue
+            if cannotation['annotationtype'] == 'contamination':
+                term_count['contamination'] += 1
+                continue
+            if cannotation['annotationtype'] == 'diffexp':
+                for cdesc in cannotation['details']:
+                    if cdesc[0] == 'all':
+                        term_count[cdesc[1]] += 1
+                        continue
+                    if cdesc[0] == 'high':
+                        term_count[cdesc[1]] += 2
+                        continue
+                    if cdesc[0] == 'low':
+                        term_count[cdesc[1]] -= 2
+                        continue
+                continue
+            if cannotation['annotationtype'] == 'other':
+                continue
+            logger.warn('unknown annotation type %s encountered' % cannotation['annotationtype'])
+        # now correct for common / uncommon terms
+        for k, v in term_count.items():
+            if k not in term_info:
+                logger.debug('term %s not in term_info' % k)
+                continue
+            delta = 1 / term_info[k]['total_sequences']
+            # flip and add '-' to term if negative
+            if v < 0:
+                k = '-' + k
+                v = -v
+            v += delta
+
+        sorted_terms = sorted(term_count, key=term_count.get, reverse=True)
+        return(sorted_terms[:num_common])
 
     def find_experiment_id(self, datamd5='', mapmd5='', getall=False):
         """
@@ -516,7 +661,7 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None):
+    def get_feature_terms(self, features, exp=None, term_type=None):
         '''Get list of terms per feature
 
         Parameters
@@ -525,12 +670,20 @@ class DBBact(Database):
             the features to get the terms for
         exp : calour.Experiment (optional)
             not None to store results in the exp (to save time for multiple queries)
+        term_type : str or None (optional)
+            The type of terms to return. optional values:
+            None to use default ('seqstring')
+            'annotation': the annotation string for each annotation (i.e. 'higher in fish compared to dogs...')
+            'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
+            'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
 
         Returns
         -------
         feature_terms : dict of list of str/int
             key is the feature, list contains all terms associated with the feature
         '''
+        if term_type is None:
+            term_type = 'annotation'
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
@@ -542,14 +695,36 @@ class DBBact(Database):
         else:
             sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(features)
         new_annotations = {}
-        for cseq, annotations_list in sequence_annotations.items():
-            if cseq not in features:
-                continue
-            newdesc = []
-            for cannotation in annotations_list:
-                cdesc = self.get_annotation_string(annotations[cannotation])
-                newdesc.append(cdesc)
-            new_annotations[cseq] = newdesc
+        if term_type == 'annotation':
+            for cseq, annotations_list in sequence_annotations.items():
+                if cseq not in features:
+                    continue
+                newdesc = []
+                for cannotation in annotations_list:
+                    cdesc = self.get_annotation_string(annotations[cannotation])
+                    newdesc.append(cdesc)
+                new_annotations[cseq] = newdesc
+        elif term_type == 'terms':
+            for cseq, annotations_list in sequence_annotations.items():
+                if cseq not in features:
+                    continue
+                newdesc = []
+                for cannotation in annotations_list:
+                    for cdesc in annotations[cannotation]['details']:
+                        if cdesc[0] == 'all' or cdesc[0] == 'high':
+                            cterm = cdesc[1]
+                        else:
+                            cterm = '-'+cdesc[1]
+                        newdesc.append(cterm)
+                new_annotations[cseq] = newdesc
+        elif term_type == 'parentterms':
+            for cseq, term_list in sequence_terms.items():
+                if cseq not in features:
+                    continue
+                term_list = [x for x in term_list if x != 'na']
+                new_annotations[cseq] = term_list
+        else:
+            raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms"' % term_type)
         return new_annotations
         # return sequence_annotations
         # return sequence_terms
@@ -680,3 +855,127 @@ class DBBact(Database):
         msg = 'problem updating annotationid %d: %s' % (annotationid, res.content)
         logger.warn(msg)
         return msg
+
+    def enrichment(self, exp, features, term_type='term'):
+        '''Get the list of enriched terms in features compared to all features in exp.
+
+        given uneven distribtion of number of terms per feature
+
+        Parameters
+        ----------
+        exp : calour.Experiment
+            The experiment to compare the features to
+        features : list of str
+            The features (from exp) to test for enrichmnt
+        data_type : str or None (optional)
+            The type of annotation data to test for enrichment
+            options are:
+            'term' - ontology terms associated with each feature.
+             'parentterm' - ontology terms including parent terms associated with each feature.
+             'annotation' - the full annotation strings associated with each feature
+
+        Returns
+        -------
+        pandas.DataFrame with  info about significantly enriched terms.
+            columns:
+                feature : str the feature
+                pval : the p-value for the enrichment (float)
+                observed : the number of observations of this term in group1 (int)
+                expected : the expected (based on all features) number of observations of this term in group1 (float)
+                frac_group1 : fraction of total terms in group 1 which are the specific term (float)
+                frac_group2 : fraction of total terms in group 2 which are the specific term (float)
+                num_group1 : number of total terms in group 1 which are the specific term (float)
+                num_group2 : number of total terms in group 2 which are the specific term (float)
+                description : the term (str)
+        '''
+        exp_features = set(exp.feature_metadata.index.values)
+        bg_features = np.array(list(exp_features.difference(features)))
+
+        # add all annotations to experiment if not already added
+        if '__dbbact_sequence_terms' not in exp.exp_metadata:
+            self.add_all_annotations_to_exp(exp)
+
+        if term_type == 'term':
+            feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        elif term_type == 'parentterm':
+            pass
+        elif term_type == 'annotation':
+            feature_terms = self._get_all_annotation_string_counts(exp_features, exp=exp)
+        else:
+            raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation"')
+
+        print(feature_terms[exp.feature_metadata.index.values[0]])
+        feature_array, term_list = self._get_term_features(features, feature_terms)
+        bg_array, term_list = self._get_term_features(bg_features, feature_terms)
+
+        all_feature_array = np.hstack([feature_array, bg_array])
+
+        # tpos = term_list.index('skin')
+        # print(tpos)
+        # print(all_feature_array[tpos,:])
+        # ipos = np.where(all_feature_array[tpos, :] > 0)[0]
+        # print(ipos)
+        # print(all_feature_array[tpos,ipos])
+        # print(feature_array.shape)
+        # print(bg_array.shape)
+        # print(all_feature_array.shape)
+        # print(feature_array[tpos,:].mean())
+        # print(bg_array[tpos,:].mean())
+
+        labels = np.zeros(all_feature_array.shape[1])
+        labels[:feature_array.shape[1]] = 1
+
+        # print(labels.sum())
+
+        keep, odif, pvals = dsfdr(all_feature_array, labels, method='meandiff', transform_type=None, alpha=0.1, numperm=1000, fdr_method='dsfdr')
+        keep = np.where(keep)[0]
+        if len(keep) == 0:
+            logger.info('no enriched terms found')
+        term_list = np.array(term_list)[keep]
+        odif = odif[keep]
+        pvals = pvals[keep]
+        res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals})
+        return res
+
+    def _get_term_features(self, features, feature_terms):
+        '''Get dict of number of appearances in each sequence keyed by term
+
+        Parameters
+        ----------
+        features : list of str
+            A list of DNA sequences
+        feature_terms : dict of {feature: list of tuples of (term, amount)}
+            The terms associated with each feature in exp
+            feature (key) : str the feature (out of exp) to which the terms relate
+            feature_terms (value) : list of tuples of (str or int the terms associated with this feature, count)
+
+        Returns
+        -------
+        numpy array of T (terms) * F (features)
+            total counts of each term (row) in each feature (column)
+        list of str
+            list of the terms corresponding to the numpy array rows
+        '''
+        # get all terms
+        terms = {}
+        cpos = 0
+        for cfeature, ctermlist in feature_terms.items():
+            for cterm, ccount in ctermlist:
+                if cterm not in terms:
+                    terms[cterm] = cpos
+                    cpos += 1
+
+        tot_features_inflated = 0
+        feature_pos = {}
+        for cfeature in features:
+            ctermlist = feature_terms[cfeature]
+            feature_pos[cfeature] = tot_features_inflated
+            tot_features_inflated += len(ctermlist)
+
+        res = np.zeros([len(terms), tot_features_inflated])
+
+        for cfeature in features:
+            for cterm, ctermcount in feature_terms[cfeature]:
+                res[terms[cterm], feature_pos[cfeature]] += ctermcount
+        term_list = sorted(terms, key=terms.get)
+        return res, term_list
