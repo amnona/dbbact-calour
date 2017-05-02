@@ -191,7 +191,7 @@ class DBBact(Database):
             shortdesc.append((cann, cdesc))
         return shortdesc
 
-    def _get_all_annotation_string_counts(self, features, exp):
+    def _get_all_annotation_string_counts(self, features, exp, ignore_exp=None):
         feature_annotations = {}
         sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
         annotations = exp.exp_metadata['__dbbact_annotations']
@@ -200,15 +200,24 @@ class DBBact(Database):
                 continue
             newdesc = []
             for cannotation in annotations_list:
+                if ignore_exp is not None:
+                    if annotations[cannotation]['expid'] in ignore_exp:
+                        continue
                 cdesc = self.get_annotation_string(annotations[cannotation])
                 newdesc.append((cdesc, 1))
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
-    def _get_all_term_counts(self, features, feature_annotations, annotations):
+    def _get_all_term_counts(self, features, feature_annotations, annotations, ignore_exp=None):
         feature_terms = {}
         for cfeature in features:
-            annotation_list = [annotations[x] for x in feature_annotations[cfeature]]
+            annotation_list = []
+            for cannotation in feature_annotations[cfeature]:
+                if ignore_exp is not None:
+                    if annotations[cannotation]['expid'] in ignore_exp:
+                        continue
+                annotation_list.append(annotations[cannotation])
+            # annotation_list = [annotations[x] for x in feature_annotations[cfeature]]
             feature_terms[cfeature] = self.get_annotation_term_counts(annotation_list)
         return feature_terms
 
@@ -661,7 +670,7 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None, term_type=None):
+    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None):
         '''Get list of terms per feature
 
         Parameters
@@ -676,6 +685,8 @@ class DBBact(Database):
             'annotation': the annotation string for each annotation (i.e. 'higher in fish compared to dogs...')
             'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
             'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
+        ignore_exp : list of int or None (optional)
+            the list of experimentids to ignore (don't take info from them)
 
         Returns
         -------
@@ -683,7 +694,7 @@ class DBBact(Database):
             key is the feature, list contains all terms associated with the feature
         '''
         if term_type is None:
-            term_type = 'annotation'
+            term_type = 'terms'
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
@@ -701,6 +712,10 @@ class DBBact(Database):
                     continue
                 newdesc = []
                 for cannotation in annotations_list:
+                    if ignore_exp is not None:
+                        annotationexp = annotations[cannotation]['expid']
+                        if annotationexp in ignore_exp:
+                            continue
                     cdesc = self.get_annotation_string(annotations[cannotation])
                     newdesc.append(cdesc)
                 new_annotations[cseq] = newdesc
@@ -710,6 +725,10 @@ class DBBact(Database):
                     continue
                 newdesc = []
                 for cannotation in annotations_list:
+                    if ignore_exp is not None:
+                        annotationexp = annotations[cannotation]['expid']
+                        if annotationexp in ignore_exp:
+                            continue
                     for cdesc in annotations[cannotation]['details']:
                         if cdesc[0] == 'all' or cdesc[0] == 'high':
                             cterm = cdesc[1]
@@ -856,7 +875,7 @@ class DBBact(Database):
         logger.warn(msg)
         return msg
 
-    def enrichment(self, exp, features, term_type='term'):
+    def enrichment(self, exp, features, term_type='term', ignore_exp=None):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -873,6 +892,8 @@ class DBBact(Database):
             'term' - ontology terms associated with each feature.
              'parentterm' - ontology terms including parent terms associated with each feature.
              'annotation' - the full annotation strings associated with each feature
+        ignore_exp: list of int or None (optional)
+            List of experiments to ignore in the analysis
 
         Returns
         -------
@@ -880,6 +901,7 @@ class DBBact(Database):
             columns:
                 feature : str the feature
                 pval : the p-value for the enrichment (float)
+                odif : the effect size (float)
                 observed : the number of observations of this term in group1 (int)
                 expected : the expected (based on all features) number of observations of this term in group1 (float)
                 frac_group1 : fraction of total terms in group 1 which are the specific term (float)
@@ -896,36 +918,21 @@ class DBBact(Database):
             self.add_all_annotations_to_exp(exp)
 
         if term_type == 'term':
-            feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+            feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'], ignore_exp=ignore_exp)
         elif term_type == 'parentterm':
             pass
         elif term_type == 'annotation':
-            feature_terms = self._get_all_annotation_string_counts(exp_features, exp=exp)
+            feature_terms = self._get_all_annotation_string_counts(exp_features, exp=exp, ignore_exp=ignore_exp)
         else:
             raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation"')
 
-        print(feature_terms[exp.feature_metadata.index.values[0]])
         feature_array, term_list = self._get_term_features(features, feature_terms)
         bg_array, term_list = self._get_term_features(bg_features, feature_terms)
 
         all_feature_array = np.hstack([feature_array, bg_array])
 
-        # tpos = term_list.index('skin')
-        # print(tpos)
-        # print(all_feature_array[tpos,:])
-        # ipos = np.where(all_feature_array[tpos, :] > 0)[0]
-        # print(ipos)
-        # print(all_feature_array[tpos,ipos])
-        # print(feature_array.shape)
-        # print(bg_array.shape)
-        # print(all_feature_array.shape)
-        # print(feature_array[tpos,:].mean())
-        # print(bg_array[tpos,:].mean())
-
         labels = np.zeros(all_feature_array.shape[1])
         labels[:feature_array.shape[1]] = 1
-
-        # print(labels.sum())
 
         keep, odif, pvals = dsfdr(all_feature_array, labels, method='meandiff', transform_type=None, alpha=0.1, numperm=1000, fdr_method='dsfdr')
         keep = np.where(keep)[0]
