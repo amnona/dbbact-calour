@@ -685,6 +685,7 @@ class DBBact(Database):
             'annotation': the annotation string for each annotation (i.e. 'higher in fish compared to dogs...')
             'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
             'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
+            'contamination': get if bacteria is contaminant or not
         ignore_exp : list of int or None (optional)
             the list of experimentids to ignore (don't take info from them)
 
@@ -742,6 +743,23 @@ class DBBact(Database):
                     continue
                 term_list = [x for x in term_list if x != 'na']
                 new_annotations[cseq] = term_list
+        elif term_type == 'contamination':
+            for cseq, annotations_list in sequence_annotations.items():
+                if cseq not in features:
+                    continue
+                newdesc = []
+                is_contamination = 0
+                for cannotation in annotations_list:
+                    if ignore_exp is not None:
+                        annotationexp = annotations[cannotation]['expid']
+                        if annotationexp in ignore_exp:
+                            continue
+                    if annotations[cannotation]['annotationtype'] == 'contamination':
+                        is_contamination += 1
+                if is_contamination > 0:
+                    new_annotations[cseq] = ['contamination']
+                else:
+                    new_annotations[cseq] = []
         else:
             raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms"' % term_type)
         return new_annotations
