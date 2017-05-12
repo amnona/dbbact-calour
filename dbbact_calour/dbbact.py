@@ -474,7 +474,7 @@ class DBBact(Database):
             return None
 
     def add_annotations(self, expid, sequences, annotationtype, annotations, submittername='NA',
-                        description='', method='', primerid=0, agenttype='Calour', private='n'):
+                        description='', method='', primerid='V4', agenttype='Calour', private='n'):
         """
         Add a new manual curation to the database
 
@@ -504,8 +504,8 @@ class DBBact(Database):
             text description of the annotation entry (i.e. "lower in whole wheat pita bread"). default is ''
         method : str (optional)
             text description of how the annotation was detected (mostly for 'DIFFEXP' annotations). default is ''
-        primerid : int (optional)
-            the PrimerID from Primers table of the sequences (usually 1 - the V4 515F,806R)
+        primerid : str (optional)
+            the primer region used for the sequence (usually 'v4')
         agenttype : str (optional)
             the program submitting the curation (defaul='Calour')
         private : str (optional)
