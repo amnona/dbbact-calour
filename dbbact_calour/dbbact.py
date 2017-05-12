@@ -474,7 +474,7 @@ class DBBact(Database):
             return None
 
     def add_annotations(self, expid, sequences, annotationtype, annotations, submittername='NA',
-                        description='', method='', primerid='V4', agenttype='Calour', private='n'):
+                        description='', method='na', primerid='V4', agenttype='Calour', private='n'):
         """
         Add a new manual curation to the database
 
