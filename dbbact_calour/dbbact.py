@@ -19,6 +19,8 @@ class DBBact(Database):
 
         # Web address of the bact server
         self.dburl = 'http://dbbact.org/REST-API'
+        # self.dburl = 'http://dbbact.cslab.openu.ac.il:81'
+
         # self.dburl = 'http://amnonim.webfactional.com/scdb_main'
         # self.dburl = 'http://amnonim.webfactional.com/scdb_develop'
         self.username = get_config_value('username', section='dbbact')
@@ -555,6 +557,8 @@ class DBBact(Database):
             key is sequence, value is list of annotationIDs present in the bacteria.
         '__dbbact_annotations':  dict of {annotationID : annotation_details}
             key is annotaitonID (int), value is the dict of annotation details.
+        '__dbbact_term_info': dict of {term, {'total_annotations':XXX, 'total_sequences':YYY}}
+            number of total annotations and sequences in the database having this term
 
         Parameters
         ----------
@@ -566,10 +570,11 @@ class DBBact(Database):
         '' if ok, otherwise error string
         '''
         logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
-        sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(exp.feature_metadata.index.values)
+        sequence_terms, sequence_annotations, annotations, term_info = self.get_seq_list_fast_annotations(exp.feature_metadata.index.values)
         exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
         exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
         exp.exp_metadata['__dbbact_annotations'] = annotations
+        exp.exp_metadata['__dbbact_term_info'] = term_info
         logger.info('Added annotation data to experiment. Total %d annotations, %d terms' % (len(annotations), len(sequence_terms)))
         return ''
 
@@ -589,6 +594,12 @@ class DBBact(Database):
             key is sequence, value is list of annotationIDs present in the bacteria.
         annotations : dict of {annotationID : annotation_details}
             key is annotaitonID (int), value is the dict of annotation details.
+        term_info : dict of {term, dict}:
+            Information about each term which appears in the annotation parents. Key is the ontolgy term. the value dict is:
+                'total_annotations' : int
+                    total number of annotations where this term appears (as a parent)
+                'total_sequences' : int
+                    total number of sequences in annotations where this term appears (as a parent)
         '''
         logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
         rdata = {}
@@ -629,7 +640,7 @@ class DBBact(Database):
             total_annotations += len(cseq_annotations)
         logger.info('Got %d annotations' % total_annotations)
 
-        return sequence_terms, sequence_annotations, res['annotations']
+        return sequence_terms, sequence_annotations, res['annotations'], res['term_info']
 
     def show_annotation_info(self, annotation):
         '''Show details about the annotation
@@ -705,7 +716,7 @@ class DBBact(Database):
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
             annotations = exp.exp_metadata['__dbbact_annotations']
         else:
-            sequence_terms, sequence_annotations, annotations = self.get_seq_list_fast_annotations(features)
+            sequence_terms, sequence_annotations, annotations, term_info = self.get_seq_list_fast_annotations(features)
         new_annotations = {}
         if term_type == 'annotation':
             for cseq, annotations_list in sequence_annotations.items():
@@ -893,7 +904,7 @@ class DBBact(Database):
         logger.warn(msg)
         return msg
 
-    def enrichment(self, exp, features, term_type='term', ignore_exp=None):
+    def enrichment(self, exp, features, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr'):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -912,6 +923,8 @@ class DBBact(Database):
              'annotation' - the full annotation strings associated with each feature
         ignore_exp: list of int or None (optional)
             List of experiments to ignore in the analysis
+        min_appearances : int (optional)
+            The minimal number of times a term appears in order to include in output list.
 
         Returns
         -------
@@ -949,10 +962,15 @@ class DBBact(Database):
 
         all_feature_array = np.hstack([feature_array, bg_array])
 
+        # remove non-informative terms (not enough observations)
+        non_informative = np.sum(all_feature_array>0,1)<min_appearances
+        all_feature_array = np.delete(all_feature_array, np.where(non_informative)[0], axis=0)
+        term_list = [x for idx,x in enumerate(term_list) if not non_informative[idx]]
+
         labels = np.zeros(all_feature_array.shape[1])
         labels[:feature_array.shape[1]] = 1
 
-        keep, odif, pvals = dsfdr(all_feature_array, labels, method='meandiff', transform_type=None, alpha=0.1, numperm=1000, fdr_method='dsfdr')
+        keep, odif, pvals = dsfdr(all_feature_array, labels, method='meandiff', transform_type=None, alpha=0.1, numperm=1000, fdr_method=fdr_method)
         keep = np.where(keep)[0]
         if len(keep) == 0:
             logger.info('no enriched terms found')
