@@ -70,7 +70,7 @@ def annotate_bacteria_gui(db, seqs, exp):
     test_user_password(db)
 
     # test if study already in database
-    cdata = db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['map_md5'])
+    cdata = db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'])
     if cdata is None:
         logger.info('Study does not exist in dbbact. Creating new study')
         cdata = study_data_ui(exp)
@@ -291,13 +291,13 @@ def study_data_ui(cexp):
         studyid if study  has data, None if no data
     """
     bdb = dbbact.DBBact()
-    cid = bdb.find_experiment_id(datamd5=cexp.exp_metadata['data_md5'], mapmd5=cexp.exp_metadata['map_md5'])
+    cid = bdb.find_experiment_id(datamd5=cexp.exp_metadata['data_md5'], mapmd5=cexp.exp_metadata['sample_metadata_md5'])
 
     # add study details we have
     study_details = []
     if cid is None:
         study_details.append(('DataMD5', cexp.exp_metadata['data_md5']))
-        study_details.append(('MapMD5', cexp.exp_metadata['map_md5']))
+        study_details.append(('MapMD5', cexp.exp_metadata['sample_metadata_md5']))
         interesting_columns = {'sra_study_s': 'sra', 'project_name_s': 'name', 'experiment_title': 'name', 'experiment_design_description': 'name', 'BioProject_s': 'sra', 'run_date': 'date'}
         for ccol in cexp.sample_metadata.columns:
             if ccol.lower() in interesting_columns:
@@ -346,7 +346,7 @@ class DBStudyInfo(QtWidgets.QDialog):
             the id pf the experiment in the database or None if new experiment
         exp_details : list of ('str','str')
             A list of tuples ('detail name','detail value') to add to the study
-            usually init to the data_d5 and map_md5
+            usually init to the data_d5 and sample_metadata_md5
         '''
         super(DBStudyInfo, self).__init__()
         uic.loadUi(resource_filename(__package__, 'ui/studyinfo.ui'), self)
