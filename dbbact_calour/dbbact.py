@@ -2,6 +2,8 @@ import requests
 import webbrowser
 from collections import defaultdict
 from logging import getLogger
+from logging.config import fileConfig
+from pkg_resources import resource_filename
 
 import numpy as np
 import pandas as pd
@@ -11,6 +13,10 @@ from calour.database import Database
 from calour.dsfdr import dsfdr
 
 logger = getLogger(__name__)
+
+log = resource_filename(__package__, 'log.cfg')
+# setting False allows other logger to print log.
+fileConfig(log, disable_existing_loggers=False)
 
 
 class DBBact(Database):
@@ -34,7 +40,7 @@ class DBBact(Database):
         Parameters
         ----------
         api : str
-            the REST API address to post the request to
+            the REST API address to post the request to (without the heading /)
         rdata : dict
             parameters to pass to the dbBact REST API
 
@@ -56,7 +62,7 @@ class DBBact(Database):
         Parameters
         ----------
         api : str
-            the REST API address to post the request to
+            the REST API address to post the request to (without the heading /)
         rdata : dict
             parameters to pass to the dbBact REST API
 
@@ -211,26 +217,100 @@ class DBBact(Database):
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
-    def _get_all_term_counts(self, features, feature_annotations, annotations, ignore_exp=None):
+    def _get_exp_annotations(self, annotations):
+        '''
+        Get all annotations for each experiment in annotations
+
+        Parameters
+        ----------
+        annotations : dict of {annotationid:int : annotation:dict}
+
+
+        Returns
+        -------
+        dict of {expid:int : dict of {term:str : total:int}}
+        '''
+        # exp_annotations = {}
+        exp_annotations = defaultdict(lambda: defaultdict(int))
+        for cannotation in annotations.values():
+            cexpid = cannotation['expid']
+            if cannotation['annotationtype'] == 'contamination':
+                exp_annotations[cexpid]['contamination'] += 1
+                continue
+            for cdetail in cannotation['details']:
+                ctype = cdetail[0]
+                cterm = cdetail[1]
+                if ctype == 'low':
+                    cterm = '-' + cterm
+                exp_annotations[cexpid][cterm]+=1
+        return exp_annotations
+
+    def _get_all_term_counts(self, features, feature_annotations, annotations, ignore_exp=None, score_method='all_mean'):
+        '''
+        Get the term scores for each feature in features
+
+        Parameters
+        ----------
+        features: list of str
+            list of feature sequences to use for the score calculation
+            feature_annotations: dict {str: list of int}
+                per feature (key) list of annotation ids
+            annotations : dict of {int: dict}
+                key is annotationID, dict is the annotation details (see XXX)
+            ignore_exp : list of int or None (optional)
+                None (default) to use all experiments
+                list of experimentIDs to not include annotations from these experiments in the score
+            score_method: str (optional)
+                The method to use for score calculation:
+                'all_mean' : score is the mean (per experiment) of the scoring for the term out of all annotations that have the term
+                'sum' : score is sum of all annotations where the term appears (experiment is ignored)
+
+        Returns
+        -------
+        dict of {feature:str, list of tuples of (term:str, score:int)}
+            key is feature, value is list of (term, score)
+        '''
+        # set up the list of annotations per experiment if needed
+        if score_method == 'all_mean':
+            exp_annotations =self._get_exp_annotations(annotations)
+        elif score_method == 'sum':
+            exp_annotations = None
+        else:
+            logger.warn('score_method %s not supported' % score_method)
+            return None
+
+        # print('annotations:')
+        # print(feature_annotations)
+
+        # calculate the per-feature score for each term
         feature_terms = {}
         for cfeature in features:
             annotation_list = []
             for cannotation in feature_annotations[cfeature]:
+                # test if we should ignore the annotation (if experiment is in ignore_exp)
                 if ignore_exp is not None:
                     if annotations[cannotation]['expid'] in ignore_exp:
                         continue
                 annotation_list.append(annotations[cannotation])
-            # annotation_list = [annotations[x] for x in feature_annotations[cfeature]]
-            feature_terms[cfeature] = self.get_annotation_term_counts(annotation_list)
+            # print('---------------------')
+            # print(cfeature)
+            feature_terms[cfeature] = self.get_annotation_term_counts(annotation_list, exp_annotations=exp_annotations, score_method=score_method)
+            # print(feature_terms)
         return feature_terms
 
-    def get_annotation_term_counts(self, annotations):
+    def get_annotation_term_counts(self, annotations, exp_annotations=None, score_method='all_mean'):
         '''Get the annotation type corrected count for all terms in annotations
 
         Parameters
         ----------
         annotations : list of dict
-            list of annotations
+            list of annotations where the feature is present
+        dict of {expid:int : dict of {term:str : total:int}}
+            from self._get_exp_annotations()
+        score_method: str (optional)
+                The method to use for score calculation:
+                'all_mean' : score is the mean (per experiment) of the scoring for the term out of all annotations that have the term
+                'sum' : score is sum of all annotations where the term appears (experiment is ignored)
 
         Returns
         -------
@@ -238,37 +318,50 @@ class DBBact(Database):
         '''
         term_count = defaultdict(int)
         for cannotation in annotations:
-            if cannotation['annotationtype'] == 'common':
-                for cdesc in cannotation['details']:
-                    term_count[cdesc[1]] += 1
+            # print('****%d' % cannotation['annotationid'])
+            details = cannotation['details']
+            annotation_type = cannotation['annotationtype']
+            if annotation_type == 'common':
+                cscore = 1
+            elif annotation_type == 'highfreq':
+                cscore = 1
+            elif annotation_type == 'other':
+                cscore = 0.5
+            elif annotation_type == 'contamination':
+                cscore = 1
+                details = [('all','contamination')]
+            elif annotation_type == 'other':
+                cscore = 0
+            elif annotation_type == 'diffexp':
+                cscore = None
+            else:
+                logger.warn('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
                 continue
-            if cannotation['annotationtype'] == 'highfreq':
-                for cdesc in cannotation['details']:
-                    term_count[cdesc[1]] += 2
-                continue
-            if cannotation['annotationtype'] == 'other':
-                for cdesc in cannotation['details']:
-                    term_count[cdesc[1]] += 0.5
-                continue
-            if cannotation['annotationtype'] == 'contamination':
-                term_count['contamination'] += 1
-                continue
-            if cannotation['annotationtype'] == 'diffexp':
-                for cdesc in cannotation['details']:
-                    if cdesc[0] == 'all':
-                        term_count[cdesc[1]] += 1
-                        continue
-                    if cdesc[0] == 'high':
-                        term_count[cdesc[1]] += 2
-                        continue
-                    if cdesc[0] == 'low':
-                        term_count[cdesc[1]] -= 2
-                        continue
-                    logger.warn('unknown detail type %s encountered' % cdesc[0])
-                continue
-            if cannotation['annotationtype'] == 'other':
-                continue
-            logger.warn('unknown annotation type %s encountered' % cannotation['annotationtype'])
+            for cdetail in details:
+                ctype = cdetail[0]
+                cterm = cdetail[1]
+                if ctype == 'all':
+                    cscore = 1
+                elif ctype == 'high':
+                    cscore = 2
+                elif ctype == 'low':
+                    # if low - change the term to "-term" - i.e. lower in term
+                    cterm = '-' + cterm
+                    cscore = 1
+                else:
+                    logger.warn('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
+
+                if score_method == 'all_mean':
+                    scale_factor = exp_annotations[cannotation['expid']][cterm]
+                    if scale_factor == 0:
+                        print('term %s, exp %d, annotationid %d, score %d, scale %d' % (cterm, cannotation['expid'], cannotation['annotationid'], cscore, scale_factor))
+                        scale_factor = 1
+                else:
+                    scale_factor = 1
+
+                # fix for differential abundance
+                term_count[cterm] += cscore / scale_factor
+
         res = []
         for k, v in term_count.items():
             # flip and add '-' to term if negative
@@ -376,6 +469,9 @@ class DBBact(Database):
         res = self._get('experiments/get_id', rdata)
         if res.status_code == 200:
             expids = res.json()['expId']
+            if len(expids) == 0:
+                logger.warn('No experiment found matching the details %s' % details)
+                return []
             if not getall:
                 if len(expids) > 1:
                     logger.warn('Problem. Found %d matches for data' % len(expids))
@@ -905,7 +1001,7 @@ class DBBact(Database):
         logger.warn(msg)
         return msg
 
-    def enrichment(self, exp, features, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr'):
+    def enrichment(self, exp, features, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean'):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -926,6 +1022,14 @@ class DBBact(Database):
             List of experiments to ignore in the analysis
         min_appearances : int (optional)
             The minimal number of times a term appears in order to include in output list.
+        fdr_method : str (optional)
+            The FDR method used for detecting enriched terms (permutation test). options are:
+            'dsfdr' (default): use the discrete FDR correction
+            'bhfdr': use Benjamini Hochbert FDR correction
+        score_method : str (optional)
+            The score method used for calculating the term score. Options are:
+            'all_mean' (default): mean over each experiment of all annotations containing the term
+            'sum' : sum of all annotations (experiment not taken into account)
 
         Returns
         -------
@@ -949,8 +1053,16 @@ class DBBact(Database):
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
             self.add_all_annotations_to_exp(exp)
 
+        # if ignore exp is True, it means we should ignore the current experiment
+        if ignore_exp is True:
+            ignore_exp = self.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp),ignore_exp))
+
         if term_type == 'term':
-            feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'], ignore_exp=ignore_exp)
+            feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'], ignore_exp=ignore_exp, score_method=score_method)
         elif term_type == 'parentterm':
             pass
         elif term_type == 'annotation':
