@@ -33,6 +33,7 @@ class DBBact(Database):
         # Web address of the bact server
         self.dburl = 'http://api.dbbact.org'
         # self.dburl = 'http://dbbact.org/REST-API'
+        # self.dburl = 'http://127.0.0.1:5000/REST-API'
         # self.dburl = 'http://dbbact.cslab.openu.ac.il:81'
         # self.dburl = 'http://dbbact.cslab.openu.ac.il/REST-API'
 
