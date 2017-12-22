@@ -358,10 +358,12 @@ class DBStudyInfo(QtWidgets.QDialog):
             info = bdb.get_experiment_info(experimentid)
             for cinfo in info:
                 qtlistadd(self.blist, cinfo[0]+':'+cinfo[1], {'fromdb': True, 'type': cinfo[0], 'value': cinfo[1]}, color='grey')
-
-        # and the supplied details (supplied to the init function via exp_details)
-        for cinfo in study_details:
-            qtlistadd(self.blist, cinfo[0] + ':' + cinfo[1], {'fromdb': False, 'type': cinfo[0], 'value': cinfo[1]}, color='black')
+        else:
+            # if not in database, get details from map file
+            # the supplied details (supplied to the init function via exp_details)
+            for cinfo in study_details:
+                print(cinfo)
+                qtlistadd(self.blist, cinfo[0] + ':' + str(cinfo[1]), {'fromdb': False, 'type': cinfo[0], 'value': str(cinfo[1])}, color='black')
 
         self.bplus.clicked.connect(self.plus)
         self.bvalue.returnPressed.connect(self.plus)
