@@ -32,6 +32,7 @@ class DBBact(Database):
 
         # Web address of the bact server
         self.dburl = 'http://api.dbbact.org'
+
         # self.dburl = 'http://dbbact.org/REST-API'
         # self.dburl = 'http://127.0.0.1:5000/REST-API'
         # self.dburl = 'http://dbbact.cslab.openu.ac.il:81'
@@ -1314,3 +1315,75 @@ class DBBact(Database):
         newexp=newexp.cluster_features(1)
         newexp=newexp.sort_by_metadata(field='expid',axis='f')
         newexp.plot(feature_field='annotation',gui='qt5',yticklabel_kwargs={'rotation':0},yticklabel_len=35,cmap='tab20b',norm=None,bary_fields=['expid'],bary_label=False, barx_fields=['group'],barx_label=False)
+
+    def plot_term_annotations(self, term, exp, features, group2_features,min_prevalence=0.01):
+        '''Plot a nice graph summarizing all the annotations supporting the term in the 2 groups
+        '''
+        # from matplotlib import rc
+        # rc('text', usetex=False)
+        if term[0] == '-':
+            term = term[1:]
+        all_seqs = features.copy()
+        all_seqs.extend(group2_features)
+        tmat, tanno, tseqs = self.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        seq_group = np.ones(len(all_seqs))
+        seq_group[:len(features)]=0
+        tseqs['group'] = seq_group
+        newexp = Experiment(tmat,sample_metadata=tseqs, feature_metadata=tanno)
+        newexp = newexp.filter_prevalence(min_prevalence)
+        newexp = newexp.sort_by_metadata('expid',axis='f')
+        # experiments = newexp.feature_metadata['expid'].unique()
+        experiments = newexp.feature_metadata['expid']
+        g1len = len(features)
+        g2len = len(group2_features)
+
+        import matplotlib.pyplot as plt
+        colors = ['r','g','b','c','m','k']
+        cdict = {}
+        for idx, cexpid in enumerate(newexp.feature_metadata['expid'].unique()):
+            cdict[cexpid] = colors[np.mod(idx, len(colors))]
+        nrows = int(np.ceil(np.sqrt(len(experiments))))
+        ncols = int(np.ceil(len(experiments)/nrows))
+        plt.subplots(nrows=nrows, ncols=ncols, figsize=[15,15])
+        cexp = newexp
+        # fig = plt.figure()
+        # for idx, cexpid in enumerate(experiments):
+        #     cexp = newexp.filter_by_metadata('expid',[cexpid],axis='f')
+        #     plt.subplot(nrows, ncols, idx+1)
+        #     plt.title(cexpid)
+        for idx2, canno in enumerate(cexp.feature_metadata.iterrows()):
+            canno = canno[1]
+            plt.subplot(nrows, ncols, idx2+1)
+            numg1 = (cexp.data[:g1len, idx2]>0).sum()
+            numg2 = (cexp.data[g1len:, idx2]>0).sum()
+            if canno['detail_type'] == 'low':
+                mult = -1
+            else:
+                mult = 1
+            # plt.pie([numg1, numg2, numother], colors=['r','g','b'])
+            plt.bar(0,mult*numg1/g1len, width=0.1, color='r')
+            plt.bar(0.15,mult*numg2/g2len, width=0.1, color='b')
+            # plt.barh(np.arange(2),[numg1/g1len, numg2/g2len])
+            # plt.legend(['group1','group2','none'])
+            ctitle = canno['annotation']
+            tt = ctitle.split(' ')
+            clen = 0
+            otitle=''
+            for ttt in tt:
+                otitle += ttt
+                clen += len(ttt)
+                if ttt == term:
+                    ttt = r"$\bf{" + ttt + "}$"
+                if clen > 20:
+                    otitle += '\n'
+                    clen = 0
+                else:
+                    otitle += ' '
+                if len(otitle)>100:
+                    break
+            plt.title(otitle,fontsize=10, color=cdict[canno['expid']])
+            plt.ylim([-1,1])
+            plt.plot([-0.1,0.25],[0,0],':k')
+            plt.xlim([-0.1,0.25])
+            plt.xticks([], [])
+        return plt.gcf()
