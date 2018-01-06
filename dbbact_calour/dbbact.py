@@ -1,7 +1,7 @@
 import requests
 import webbrowser
 from collections import defaultdict
-from logging import getLogger, NOTSET
+from logging import getLogger, NOTSET, basicConfig
 from logging.config import fileConfig
 from os import path
 
@@ -15,16 +15,20 @@ from calour.experiment import Experiment
 
 logger = getLogger(__name__)
 
-# get the logger config file location
-log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
-# set the logger output according to log.cfg
-# setting False allows other logger to print log.
-fileConfig(log, disable_existing_loggers=False)
-# set the log level to same value as calour log level
-clog = getLogger('calour')
-calour_log_level = clog.getEffectiveLevel()
-if calour_log_level != NOTSET:
-    logger.setLevel(calour_log_level)
+try:
+    # get the logger config file location
+    log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
+    # set the logger output according to log.cfg
+    # setting False allows other logger to print log.
+    fileConfig(log, disable_existing_loggers=False)
+    # set the log level to same value as calour log level
+    clog = getLogger('calour')
+    calour_log_level = clog.getEffectiveLevel()
+    if calour_log_level != NOTSET:
+        logger.setLevel(calour_log_level)
+except:
+    print('FAILED loading logging config file %s' % log)
+    basicConfig(format='%(levelname)s:%(message)s')
 
 
 class DBBact(Database):
@@ -1453,7 +1457,6 @@ class DBBact(Database):
         # add all annotations to experiment if not already added
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
             self.add_all_annotations_to_exp(exp)
-
 
         # if ignore exp is True, it means we should ignore the current experiment
         if ignore_exp is True:
