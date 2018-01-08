@@ -1396,7 +1396,7 @@ class DBBact(Database):
         return plt.gcf()
 
 
-    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean'):
+    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1):
         '''Get the list of enriched terms for all bacteria between two groups
 
         given uneven distribtion of number of terms per feature
@@ -1434,6 +1434,13 @@ class DBBact(Database):
             'all_mean' (default): mean over each experiment of all annotations containing the term
             'sum' : sum of all annotations (experiment not taken into account)
             'card_mean': use a null model keeping the number of annotations per each bacteria
+        alpha : float (optional)
+            the FDR level desired (0.1 means up to 10% of results can be due to null hypothesis)
+        freq_weight : str (optional)
+            How to incorporate the frequency of each feature (in a sample) into the term count for the sample. options:
+                'linear' : use the frequency
+                'log' : use the log2 of the frequency
+                'binary' : use the presence/absence of the feature
 
         Returns
         -------
@@ -1495,14 +1502,22 @@ class DBBact(Database):
                     cpos += 1
                 term_features[cterm] += 1
 
+        logger.debug('found %d terms for all features' % len(terms))
+
         # create the term x sample array
         fs_array = np.zeros([exp.data.shape[0], len(terms)])
 
         data = exp.get_data(sparse=False, copy=True)
-        # TODO: normalize data to bin/log/etc.
-        data[data < 1] = 1
-        data = np.log2(data)
-        # data = data>0
+        # how to weight the frequency of each bacteria
+        if freq_weight == 'log':
+            data[data < 1] = 1
+            data = np.log2(data)
+        elif freq_weight == 'binary':
+            data = data>0
+        elif freq_weight == 'linear':
+            pass
+        else:
+            raise ValueError('unknown freq_weight option %s. Can use ["log", "binary","linear"].')
 
         # iterate over all features and add to all terms associated with the feature
         for idx, cfeature in enumerate(exp_features):
@@ -1513,9 +1528,8 @@ class DBBact(Database):
         # create the new experiment with samples x terms
         sm = deepcopy(exp.sample_metadata)
         sorted_term_list = sorted(terms, key=terms.get)
-        # fm = pd.DataFrame(list(terms.values()), index=list(terms.keys()))
         fm = pd.DataFrame(sorted_term_list, index=sorted_term_list)
         fm['num_features'] = [term_features[d] for d in fm.index]
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
-        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform=None)
+        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform=None, alpha=alpha)
         return dd
