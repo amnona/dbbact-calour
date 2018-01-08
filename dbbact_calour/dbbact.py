@@ -73,7 +73,7 @@ class DBBact(Database):
             logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
         return res
 
-    def _get(self, api, rdata):
+    def _get(self, api, rdata, param_json=True):
         '''GET a request to dbBact using authorization parameters
 
         Parameters
@@ -82,6 +82,8 @@ class DBBact(Database):
             the REST API address to post the request to (without the heading /)
         rdata : dict
             parameters to pass to the dbBact REST API
+        param_json : bool (optional)
+            True (default) to use rdata as json, False to use rdata as parameter
 
         Returns
         -------
@@ -90,7 +92,11 @@ class DBBact(Database):
         '''
         rdata['user'] = self.username
         rdata['pwd'] = self.password
-        res = requests.get(self.dburl + '/' + api, json=rdata)
+        if param_json:
+            res = requests.get(self.dburl + '/' + api, json=rdata)
+        else:
+            res = requests.get(self.dburl + '/' + api, params=rdata)
+
         if res.status_code != 200:
             logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
         return res
@@ -1533,3 +1539,130 @@ class DBBact(Database):
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform=None, alpha=alpha)
         return dd
+
+    def term_neighbors(self, term):
+        '''Get the closest terms to a given term
+
+        Based on the fraction of shared bacteria between the terms
+        For database metanalysis.
+
+        Parameters
+        ----------
+        term : str
+            the term to get the neighbors for
+
+        Returns
+        -------
+
+        '''
+        # get the bacteria associated with the term
+        term_features = self.get_db_term_features(term)
+
+        # now go over all bacteria and find other terms associated with each
+        terms_to_check = set()
+        for cfeature in term_features.keys():
+            annotations, term_info = self.get_seq_annotations(cfeature)
+            for cannotation in annotations:
+                for cdetail in cannotation['details']:
+                    terms_to_check.add(cdetail[1])
+        print('need to check %d details' % len(terms_to_check))
+        term_dist = {}
+        for cterm in terms_to_check:
+            print(cterm)
+            try:
+                cterm_f = self.get_db_term_features(cterm)
+                common = len(set(term_features.keys()).intersection(set(cterm_f.keys())))
+                cscore = common/(len(term_features)+len(cterm_f))
+                term_dist[cterm] = cscore
+                print('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
+            except:
+                logger.warn('failed for term %s' % cterm)
+        return term_dist
+
+    def get_db_term_features(self, term):
+        '''Get all the features associated with a term in the database
+
+        Parameters
+        ----------
+        term : str
+            The term to look for in the database
+
+        Returns
+        -------
+        dict of {feature: num} {str: int}. Key is feature (sequence), value is number of annotations containing this feature for this term.
+        '''
+        rdata = {}
+        rdata['term'] = term
+        res = self._get('ontology/get_annotations', rdata, param_json=False)
+        if res.status_code != 200:
+            logger.warn('error getting annotations for term %s' % term)
+            return []
+        res = res.json()
+        annotations = res.get('annotations')
+        logger.info('found %d annotations with the term %s' % (len(annotations), term))
+
+        feature_num = defaultdict(int)
+        for cannotation in annotations:
+            foundit = False
+            for cdetail in cannotation['details']:
+                if cdetail[1] != term:
+                    continue
+                if cdetail[0] == 'low':
+                    logger.info('annotation %d is low' % cannotation['annotationid'])
+                    continue
+                foundit = True
+                break
+            if not foundit:
+                continue
+            seqs = self.get_annotation_sequences(cannotation['annotationid'])
+            for cseq in seqs:
+                feature_num[cseq] += 1
+        return feature_num
+
+    def get_annotation_sequences(self, annotationid):
+        '''Get all sequence ids associated with an annotation
+
+        Parameters
+        ----------
+        annotationid : int
+            the annotationid to get the sequences for
+
+        Returns
+        -------
+        list of str. The sequences associated with the annotation
+        '''
+        rdata = {}
+        rdata['annotationid'] = annotationid
+        res = self._get('annotations/get_sequences', rdata)
+        if res.status_code != 200:
+            logger.warn('error getting sequences for annotationid %s' % annotationid)
+            return []
+        res = res.json()
+        seqids = res.get('seqids')
+        logger.debug('found %d sequences for annotationid %d' % (len(seqids), annotationid))
+        seqs = self.get_seq_id_info(seqids)
+        return seqs
+
+    def get_seq_id_info(self, seqids):
+        '''Get sequences for sequenceids
+
+        Parameters
+        ----------
+        ids : list of int
+            list of the sequenceids (from get_annotation_sequences)
+
+        Returns
+        -------
+        list of str
+            sequence of each id
+        '''
+        rdata = {}
+        rdata['seqids'] = seqids
+        res = self._get('sequences/get_info', rdata)
+        if res.status_code != 200:
+            logger.warn('error getting sequences for seqids %s' % seqids)
+            return []
+        res = res.json()
+        seqdat = res.get('sequences')
+        seqs = [x['seq'] for x in seqdat]
+        return seqs

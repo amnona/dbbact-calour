@@ -47,6 +47,7 @@ setup(name='dbbact-calour',
       url='http://microbio.me/calour',
       test_suite='nose.collector',
       packages=find_packages(),
+      package_dir={'dbbact-calour':'dbbact_calour'},
       package_data={'dbbact-calour': ['data/*.pickle', 'log.cfg']},
       install_requires=[
           'pandas',
