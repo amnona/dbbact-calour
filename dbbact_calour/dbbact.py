@@ -3,7 +3,8 @@ import webbrowser
 from collections import defaultdict
 from logging import getLogger, NOTSET, basicConfig
 from logging.config import fileConfig
-from os import path
+from copy import deepcopy
+from pkg_resources import resource_filename
 
 import numpy as np
 import pandas as pd
@@ -17,7 +18,8 @@ logger = getLogger(__name__)
 
 try:
     # get the logger config file location
-    log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
+    log = resource_filename(__name__, 'log.cfg')
+    # log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
     # set the logger output according to log.cfg
     # setting False allows other logger to print log.
     fileConfig(log, disable_existing_loggers=False)
@@ -1452,7 +1454,7 @@ class DBBact(Database):
             group: int the group (1/2) to which the feature belongs
             sequence: str
         '''
-        exp_features = set(exp.feature_metadata.index.values)
+        exp_features = list(exp.feature_metadata.index.values)
 
         # add all annotations to experiment if not already added
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
@@ -1482,65 +1484,38 @@ class DBBact(Database):
         else:
             raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation"')
 
-        # arrays of terms (rows) x bacteria (cols)
-        feature_array, term_list = self._get_term_features(exp_features, feature_terms)
+        # get all terms. store the index position for each term
+        terms = {}
+        term_features = defaultdict(int)
+        cpos = 0
+        for cfeature, ctermlist in feature_terms.items():
+            for cterm, ccount in ctermlist:
+                if cterm not in terms:
+                    terms[cterm] = cpos
+                    cpos += 1
+                term_features[cterm] += 1
 
-        # remove non-informative terms (present in not enough bacteria)
-        non_informative = np.sum(feature_array>0,1) < min_appearances
-        feature_array = np.delete(feature_array, np.where(non_informative)[0], axis=0)
-        term_list = [x for idx,x in enumerate(term_list) if not non_informative[idx]]
+        # create the term x sample array
+        fs_array = np.zeros([exp.data.shape[0], len(terms)])
 
-        # remove terms present in one experiment
-        term_exps = defaultdict(set)
-        num_removed = 0
-        for cannotation in exp.exp_metadata['__dbbact_annotations'].values():
-            for cdetail in cannotation['details']:
-                cterm = cdetail[1]
-                term_exps[cterm].add(cannotation['expid'])
-        new_term_list = []
-        for cterm in term_list:
-            if cterm[0]=='-':
-                ccterm=cterm[1:]
-            else:
-                ccterm=cterm
-            if len(term_exps[ccterm])==1:
-                cterm = '**%s**%s' % (list(term_exps[ccterm])[0], cterm)
-                num_removed += 1
-            new_term_list.append(cterm)
-        term_list = new_term_list
-        logger.info('removed %d terms' % num_removed)
+        data = exp.get_data(sparse=False, copy=True)
+        # TODO: normalize data to bin/log/etc.
+        data[data < 1] = 1
+        data = np.log2(data)
+        # data = data>0
 
-        # term scores for group1, group2
-        # each term score is a dict of all terms relevant to this group
-        term_scores=[defaultdict(float), defaultdict(float)]
-        for cgroup, cexp in enumerate([exp1, exp2]):
-            cdata = cexp.get_data(sparse=False)
-            feature_mod = cdata.sum(axis=0)
-            for feature_idx, cfeature in enumerate(cexp.feature_metadata.index.values):
-                for cterm in feature_terms[cfeature]:
-                    term_scores[cgroup][cterm] += feature_mod[feature_idx]
+        # iterate over all features and add to all terms associated with the feature
+        for idx, cfeature in enumerate(exp_features):
+            fterms = feature_terms[cfeature]
+            for cterm,cval in fterms:
+                fs_array[:, terms[cterm]] += cval * data[:, idx]
 
-        labels = np.zeros(all_feature_array.shape[1])
-        labels[:feature_array.shape[1]] = 1
-
-        keep, odif, pvals = dsfdr(all_feature_array, labels, method='meandiff', transform_type=None, alpha=0.1, numperm=1000, fdr_method=fdr_method)
-        keep = np.where(keep)[0]
-        if len(keep) == 0:
-            logger.info('no enriched terms found')
-        term_list = np.array(term_list)[keep]
-        all_feature_array = all_feature_array[keep,:].T
-        all_feature_array = all_feature_array*100
-        odif = odif[keep]
-        pvals = pvals[keep]
-        si = np.argsort(odif)
-        term_list = term_list[si]
-        odif = odif[si]
-        pvals = pvals[si]
-        all_feature_array = all_feature_array[:,si]
-        res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals}, index=term_list)
-        features = list(features)
-        features.extend(bg_features)
-        # tmat, tanno, tseqs = self.get_term_annotations("crohn's disease", features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
-        # return tanno, tmat, tseqs
-        features = pd.DataFrame({'sequence': features, 'group': labels}, index=features)
-        return res, all_feature_array, features
+        # create the new experiment with samples x terms
+        sm = deepcopy(exp.sample_metadata)
+        sorted_term_list = sorted(terms, key=terms.get)
+        # fm = pd.DataFrame(list(terms.values()), index=list(terms.keys()))
+        fm = pd.DataFrame(sorted_term_list, index=sorted_term_list)
+        fm['num_features'] = [term_features[d] for d in fm.index]
+        newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
+        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform=None)
+        return dd
