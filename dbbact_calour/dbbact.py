@@ -763,6 +763,31 @@ class DBBact(Database):
 
         return sequence_terms, sequence_annotations, res['annotations'], res['term_info']
 
+    def get_annotation_website(self, annotation):
+        '''Get the database website address of information about the annotation.
+
+        Parameters
+        ----------
+        annotation : dict
+            keys/values are database specific.
+            E.g. See dbBact REST API /annotations/get_annotation for keys / values
+
+
+        Returns
+        -------
+        str or None
+            The webaddress of the html page with details about the annotation,
+            or None if not available
+        '''
+        if 'annotationid' in annotation:
+            address = '%s/annotation_info/%d' % (self.web_interface, annotation['annotationid'])
+        elif 'sequence' in annotation:
+            address = '%s/sequence_annotations/%s' % (self.web_interface, annotation['sequence'])
+        else:
+            logger.warning('Cannot show annotation info since no annotationid/sequence')
+            return None
+        return address
+
     def show_annotation_info(self, annotation):
         '''Show details about the annotation
 
@@ -774,12 +799,9 @@ class DBBact(Database):
         # open in a new tab, if possible
         new = 2
 
-        if 'annotationid' in annotation:
-            address = '%s/annotation_info/%d' % (self.web_interface, annotation['annotationid'])
-        elif 'sequence' in annotation:
-            address = '%s/sequence_annotations/%s' % (self.web_interface, annotation['sequence'])
-        else:
-            logger.debug('Cannot show annotation info')
+        address = self.get_annotation_website(annotation)
+        if address is None:
+            logger.warning('Cannot find dbBact info address. Aborting')
             return
         webbrowser.open(address, new=new)
 
@@ -1329,7 +1351,100 @@ class DBBact(Database):
         newexp=newexp.sort_by_metadata(field='expid',axis='f')
         newexp.plot(feature_field='annotation',gui='qt5',yticklabel_kwargs={'rotation':0},yticklabel_len=35,cmap='tab20b',norm=None,bary_fields=['expid'],bary_label=False, barx_fields=['group'],barx_label=False)
 
+
     def plot_term_annotations(self, term, exp, features, group2_features,min_prevalence=0.01):
+        '''Plot a nice graph summarizing all the annotations supporting the term in the 2 groups
+        '''
+        # from matplotlib import rc
+        # rc('text', usetex=False)
+        if term[0] == '-':
+            term = term[1:]
+        all_seqs = features.copy()
+        all_seqs.extend(group2_features)
+        tmat, tanno, tseqs = self.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        seq_group = np.ones(len(all_seqs))
+        seq_group[:len(features)]=0
+        tseqs['group'] = seq_group
+        newexp = Experiment(tmat,sample_metadata=tseqs, feature_metadata=tanno)
+        newexp = newexp.filter_prevalence(min_prevalence)
+        newexp = newexp.sort_by_metadata('expid',axis='f')
+        # experiments = newexp.feature_metadata['expid'].unique()
+        experiments = newexp.feature_metadata['expid']
+        g1len = len(features)
+        g2len = len(group2_features)
+
+        import matplotlib.pyplot as plt
+        colors = ['r','g','b','c','m','k']
+        cdict = {}
+        for idx, cexpid in enumerate(newexp.feature_metadata['expid'].unique()):
+            cdict[cexpid] = colors[np.mod(idx, len(colors))]
+        nrows = int(np.ceil(np.sqrt(len(experiments))))
+        ncols = int(np.ceil(len(experiments)/nrows))
+        plt.subplots(nrows=nrows, ncols=ncols, figsize=[15,15])
+        cexp = newexp
+        # fig = plt.figure()
+        # for idx, cexpid in enumerate(experiments):
+        #     cexp = newexp.filter_by_metadata('expid',[cexpid],axis='f')
+        #     plt.subplot(nrows, ncols, idx+1)
+        #     plt.title(cexpid)
+        for idx2, canno in enumerate(cexp.feature_metadata.iterrows()):
+            canno = canno[1]
+            plt.subplot(nrows, ncols, idx2+1)
+            numg1 = (cexp.data[:g1len, idx2]>0).sum()
+            numg2 = (cexp.data[g1len:, idx2]>0).sum()
+            if canno['detail_type'] == 'low':
+                mult = -1
+            else:
+                mult = 1
+            # plt.pie([numg1, numg2, numother], colors=['r','g','b'])
+            plt.pie([numg1/g1len,1-numg1/g1len], colors=['mediumblue','aliceblue'], center=[0.6,0], radius=0.5)
+            plt.pie([numg2/g2len,1-numg2/g2len], colors=['r','mistyrose'], center=[-0.6,0], radius=0.5)
+            # plt.bar(0,mult*numg1/g1len, width=0.1, color='r')
+            # plt.bar(0.15,mult*numg2/g2len, width=0.1, color='b')
+            # plt.barh(np.arange(2),[numg1/g1len, numg2/g2len])
+            # plt.legend(['group1','group2','none'])
+            ctitle = canno['annotation']
+            tt = ctitle.split(' ')
+            clen = 0
+            otitle = ''
+            for ttt in tt:
+                otitle += ttt
+                clen += len(ttt)
+                if ttt == term:
+                    ttt = r"$\bf{" + ttt + "}$"
+                if clen > 20:
+                    otitle += '\n'
+                    clen = 0
+                else:
+                    otitle += ' '
+                if len(otitle)>100:
+                    break
+            plt.text(0,0.5, otitle, fontsize=10, color=cdict[canno['expid']], horizontalalignment='center', verticalalignment='bottom')
+            diff_title_high = []
+            diff_title_low = []
+            all_title = []
+            print(canno)
+            cannotation = exp.exp_metadata['__dbbact_annotations'][canno['annotationid']]
+            for cdetailtype, cdetailterm in cannotation['details']:
+                if cdetailtype == 'all':
+                    all_title.append(cdetailterm)
+                elif cdetailtype == 'high':
+                    diff_title_high.append(cdetailterm)
+                elif cdetailtype == 'low':
+                    diff_title_low.append(cdetailterm)
+            diff_title = ', '.join(diff_title_high) + ' > ' + ', '.join(diff_title_low)
+            all_title = ', '.join(all_title)
+            plt.text(0, -0.7, diff_title, fontsize=20, color='black', horizontalalignment='center', verticalalignment='bottom')
+            plt.text(0, 0.7, all_title, fontsize=20, color='black', horizontalalignment='center', verticalalignment='bottom')
+            # plt.title(otitle,fontsize=10, color=cdict[canno['expid']])
+            # plt.ylim([-1,1])
+            # plt.plot([-0.1,0.25],[0,0],':k')
+            # plt.xlim([-0.1,0.25])
+            # plt.xticks([], [])
+        return plt.gcf()
+
+
+    def plot_term_annotations2(self, term, exp, features, group2_features,min_prevalence=0.01):
         '''Plot a nice graph summarizing all the annotations supporting the term in the 2 groups
         '''
         # from matplotlib import rc
@@ -1401,18 +1516,19 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-
     def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1):
-        '''Get the list of enriched terms for all bacteria between two groups
+        '''Get the list of enriched terms for all bacteria between two groups.
 
-        given uneven distribtion of number of terms per feature
+        It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
+        (where the numbers are how strong is the term associated with the feature based on database annotations using score_method).
+        A differntial abundance test (using dsFDR multiple hypothesis correction) is then performed on the resulting sample X term matrix.
 
         Parameters
         ----------
         exp : calour.Experiment
             The experiment to compare the features to
         field : str
-            Name of the field to divide the sample by
+            Name of the field to divide the samples by
         value1 : str or list of str
             Values (for selected field) for samples belonging to sample group 1
         value2 : str or list of str or None (optional)
@@ -1440,13 +1556,13 @@ class DBBact(Database):
             'all_mean' (default): mean over each experiment of all annotations containing the term
             'sum' : sum of all annotations (experiment not taken into account)
             'card_mean': use a null model keeping the number of annotations per each bacteria
-        alpha : float (optional)
-            the FDR level desired (0.1 means up to 10% of results can be due to null hypothesis)
         freq_weight : str (optional)
             How to incorporate the frequency of each feature (in a sample) into the term count for the sample. options:
                 'linear' : use the frequency
                 'log' : use the log2 of the frequency
                 'binary' : use the presence/absence of the feature
+        alpha : float (optional)
+            the FDR level desired (0.1 means up to 10% of results can be due to null hypothesis)
 
         Returns
         -------
@@ -1495,7 +1611,7 @@ class DBBact(Database):
                     feature_terms[cfeature]=[]
                 feature_terms[cfeature].extend(cvals)
         else:
-            raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation"')
+            raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation", "combined"')
 
         # get all terms. store the index position for each term
         terms = {}
@@ -1519,7 +1635,7 @@ class DBBact(Database):
             data[data < 1] = 1
             data = np.log2(data)
         elif freq_weight == 'binary':
-            data = data>0
+            data = data > 0
         elif freq_weight == 'linear':
             pass
         else:
@@ -1528,16 +1644,18 @@ class DBBact(Database):
         # iterate over all features and add to all terms associated with the feature
         for idx, cfeature in enumerate(exp_features):
             fterms = feature_terms[cfeature]
-            for cterm,cval in fterms:
+            for cterm, cval in fterms:
                 fs_array[:, terms[cterm]] += cval * data[:, idx]
 
         # create the new experiment with samples x terms
         sm = deepcopy(exp.sample_metadata)
         sorted_term_list = sorted(terms, key=terms.get)
-        fm = pd.DataFrame(sorted_term_list, index=sorted_term_list)
+        fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
         fm['num_features'] = [term_features[d] for d in fm.index]
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
-        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform=None, alpha=alpha)
+
+        # get the differentially abundant terms between the two sample groups
+        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
     def term_neighbors(self, term):
@@ -1639,6 +1757,7 @@ class DBBact(Database):
             return []
         res = res.json()
         seqids = res.get('seqids')
+        return seqids
         logger.debug('found %d sequences for annotationid %d' % (len(seqids), annotationid))
         seqs = self.get_seq_id_info(seqids)
         return seqs
@@ -1666,3 +1785,66 @@ class DBBact(Database):
         seqdat = res.get('sequences')
         seqs = [x['seq'] for x in seqdat]
         return seqs
+
+
+    def all_term_neighbors(self, limit=[]):
+        '''Get all the teature_ids associated with each term in the database
+
+        Parameters
+        ----------
+        limit : list of str (optional)
+            Only use annotations that contain all these terms
+
+        Returns
+        -------
+        dict of {str: {int: int}}
+            dict of {term : {feature_id : count}}
+            key is term, value is dict where key is the feature_id (int from dbBact), value is the number of annotations (containing the term) with the feature
+        '''
+        logger.info('getting all annotations list from dbBact')
+        res = self._get('annotations/get_all_annotations', {}, param_json=True)
+        res = res.json()
+        annotations = res['annotations']
+        logger.info('got %d annotations' % len(annotations))
+
+        term_features = defaultdict(lambda: defaultdict(int))
+        term_experiments = defaultdict(set)
+        for cannotation in annotations:
+            found_limits = True
+            for climit_term in limit:
+                climit_found = False
+                for cdetail in cannotation['details']:
+                    if cdetail[1] == climit_term:
+                        climit_found = True
+                        break
+                if not climit_found:
+                    found_limits = False
+            if not found_limits:
+                continue
+            annotation_seqs = self.get_annotation_sequences(cannotation['annotationid'])
+            for cdetail in cannotation['details']:
+                if cdetail[0] == 'low':
+                    cterm = '-'+cdetail[1]
+                else:
+                    cterm = cdetail[1]
+                for cseq in annotation_seqs:
+                    term_features[cterm][cseq] += 1
+                    term_experiments[cterm].add(cannotation['expid'])
+        return term_features, term_experiments
+
+    def get_term_neighbors(self, term_features, term):
+        term_dist = {}
+        term_f = term_features[term]
+        for cterm, cterm_f in term_features.items():
+            common = len(set(term_f.keys()).intersection(set(cterm_f.keys())))
+            cscore = common/(len(term_f)+len(cterm_f))
+            term_dist[cterm] = cscore
+        res = sorted(term_dist.items(),key=lambda x: x[1], reverse=True)
+        return res
+
+    def get_term_term_stats(self, term_features, term1, term2):
+        term1_f = term_features[term1]
+        term2_f = term_features[term2]
+        common = len(set(term1_f.keys()).intersection(set(term2_f.keys())))
+        cscore = common/(len(term1_f)+len(term2_f))
+        print('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
