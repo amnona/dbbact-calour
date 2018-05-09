@@ -1,3 +1,18 @@
+'''
+dbbact (:mod:`dbbact_calour.dbbact`)
+====================================
+
+.. currentmodule:: dbbact_calour.dbbact
+
+Functions
+^^^^^^^^^
+.. autosummary::
+   :toctree: generated
+
+   DBBact
+   DBBact.enrichment
+'''
+
 import requests
 import webbrowser
 from collections import defaultdict
@@ -1047,7 +1062,7 @@ class DBBact(Database):
         logger.warn(msg)
         return msg
 
-    def enrichment(self, exp, features, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean'):
+    def enrichment(self, exp, features, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', random_seed=None):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1080,6 +1095,8 @@ class DBBact(Database):
             'all_mean' (default): mean over each experiment of all annotations containing the term
             'sum' : sum of all annotations (experiment not taken into account)
             'card_mean': use a null model keeping the number of annotations per each bacteria
+        random_seed: int or None
+            int to specify the random seed for numpy.random.
 
         Returns
         -------
@@ -1094,12 +1111,15 @@ class DBBact(Database):
             num_group1 : number of total terms in group 1 which are the specific term (float)
             num_group2 : number of total terms in group 2 which are the specific term (float)
             description : the term (str)
-    numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
+        numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
             for term in feature
         pandas.DataFrame with info about the features used. columns:
             group: int the group (1/2) to which the feature belongs
             sequence: str
         '''
+        if random_seed is not None:
+            np.random.seed(random_seed)
+
         exp_features = set(exp.feature_metadata.index.values)
         bg_features = np.array(list(exp_features.difference(features)))
 
@@ -1517,7 +1537,7 @@ class DBBact(Database):
         return plt.gcf()
 
     def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1):
-        '''Get the list of enriched terms for all bacteria between two groups.
+        '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
         (where the numbers are how strong is the term associated with the feature based on database annotations using score_method).
@@ -1595,7 +1615,7 @@ class DBBact(Database):
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
-                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp),ignore_exp))
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
         if term_type == 'term':
             feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'], ignore_exp=ignore_exp, score_method=score_method)
@@ -1606,9 +1626,9 @@ class DBBact(Database):
         elif term_type == 'combined':
             feature_terms = self._get_all_term_counts(exp_features, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'], ignore_exp=ignore_exp, score_method=score_method)
             feature_annotations = self._get_all_annotation_string_counts(exp_features, exp=exp, ignore_exp=ignore_exp)
-            for cfeature,cvals in feature_annotations.items():
+            for cfeature, cvals in feature_annotations.items():
                 if cfeature not in feature_terms:
-                    feature_terms[cfeature]=[]
+                    feature_terms[cfeature] = []
                 feature_terms[cfeature].extend(cvals)
         else:
             raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation", "combined"')
@@ -1690,7 +1710,7 @@ class DBBact(Database):
             try:
                 cterm_f = self.get_db_term_features(cterm)
                 common = len(set(term_features.keys()).intersection(set(cterm_f.keys())))
-                cscore = common/(len(term_features)+len(cterm_f))
+                cscore = common / (len(term_features) + len(cterm_f))
                 term_dist[cterm] = cscore
                 print('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
             except:
@@ -1785,7 +1805,6 @@ class DBBact(Database):
         seqdat = res.get('sequences')
         seqs = [x['seq'] for x in seqdat]
         return seqs
-
 
     def all_term_neighbors(self, limit=[]):
         '''Get all the teature_ids associated with each term in the database
