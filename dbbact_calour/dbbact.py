@@ -9,8 +9,17 @@ Functions
 .. autosummary::
    :toctree: generated
 
-   DBBact
    DBBact.enrichment
+   DBBact.add_annotations
+   DBBact.add_all_annotations_to_exp
+   DBBact.add_annotation
+   DBBact.get_feature_terms
+   DBBact.delete_annotation
+   DBBact.upadte_annotation
+   DBBact.show_term_details
+   DBBact.plot_term_annotations
+   DBBact.sample_enrichment
+   DBBact
 '''
 
 import requests
@@ -1253,7 +1262,6 @@ class DBBact(Database):
         term_list = sorted(terms, key=terms.get)
         return res, term_list
 
-
     def _get_term_features(self, features, feature_terms):
         '''Get dict of number of appearances in each sequence keyed by term
 
@@ -1290,7 +1298,6 @@ class DBBact(Database):
                 res[terms[cterm], idx] = cscore
         term_list = sorted(terms, key=terms.get)
         return res, term_list
-
 
     def get_term_annotations(self, term, features, feature_annotations, annotations):
         '''
@@ -1341,14 +1348,14 @@ class DBBact(Database):
                     elif term_annotations['annotation_type'][cannotation_id] == 'highfreq':
                         score = 8
                     elif term_annotations['annotation_type'][cannotation_id] == 'diffexp':
-                        if term_annotations['detail_type'][cannotation_id]=='all':
+                        if term_annotations['detail_type'][cannotation_id] == 'all':
                             score = 5
-                        elif term_annotations['detail_type'][cannotation_id]=='low':
+                        elif term_annotations['detail_type'][cannotation_id] == 'low':
                             score = 2
-                        elif term_annotations['detail_type'][cannotation_id]=='high':
+                        elif term_annotations['detail_type'][cannotation_id] == 'high':
                             score = 16
                     else:
-                        score=32
+                        score = 32
                     term_mat[idx, annotation_pos] = score
         term_annotations.index = term_annotations.index.map(str)
         return term_mat, term_annotations, pd.DataFrame({'sequence': features}, index=features)
@@ -1364,15 +1371,14 @@ class DBBact(Database):
         all_seqs.extend(group2_features)
         tmat, tanno, tseqs = self.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
         seq_group = np.ones(len(all_seqs))
-        seq_group[:len(features)]=0
+        seq_group[:len(features)] = 0
         tseqs['group'] = seq_group
-        newexp = Experiment(tmat,sample_metadata=tseqs, feature_metadata=tanno)
-        newexp=newexp.cluster_features(1)
-        newexp=newexp.sort_by_metadata(field='expid',axis='f')
-        newexp.plot(feature_field='annotation',gui='qt5',yticklabel_kwargs={'rotation':0},yticklabel_len=35,cmap='tab20b',norm=None,bary_fields=['expid'],bary_label=False, barx_fields=['group'],barx_label=False)
+        newexp = Experiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
+        newexp = newexp.cluster_features(1)
+        newexp = newexp.sort_by_metadata(field='expid', axis='f')
+        newexp.plot(feature_field='annotation', gui='qt5', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=False, barx_fields=['group'], barx_label=False)
 
-
-    def plot_term_annotations(self, term, exp, features, group2_features,min_prevalence=0.01):
+    def plot_term_annotations(self, term, exp, features, group2_features, min_prevalence=0.01):
         '''Plot a nice graph summarizing all the annotations supporting the term in the 2 groups
         '''
         # from matplotlib import rc
@@ -1383,24 +1389,24 @@ class DBBact(Database):
         all_seqs.extend(group2_features)
         tmat, tanno, tseqs = self.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
         seq_group = np.ones(len(all_seqs))
-        seq_group[:len(features)]=0
+        seq_group[:len(features)] = 0
         tseqs['group'] = seq_group
-        newexp = Experiment(tmat,sample_metadata=tseqs, feature_metadata=tanno)
+        newexp = Experiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
         newexp = newexp.filter_prevalence(min_prevalence)
-        newexp = newexp.sort_by_metadata('expid',axis='f')
+        newexp = newexp.sort_by_metadata('expid', axis='f')
         # experiments = newexp.feature_metadata['expid'].unique()
         experiments = newexp.feature_metadata['expid']
         g1len = len(features)
         g2len = len(group2_features)
 
         import matplotlib.pyplot as plt
-        colors = ['r','g','b','c','m','k']
+        colors = ['r', 'g', 'b', 'c', 'm', 'k']
         cdict = {}
         for idx, cexpid in enumerate(newexp.feature_metadata['expid'].unique()):
             cdict[cexpid] = colors[np.mod(idx, len(colors))]
         nrows = int(np.ceil(np.sqrt(len(experiments))))
-        ncols = int(np.ceil(len(experiments)/nrows))
-        plt.subplots(nrows=nrows, ncols=ncols, figsize=[15,15])
+        ncols = int(np.ceil(len(experiments) / nrows))
+        plt.subplots(nrows=nrows, ncols=ncols, figsize=[15, 15])
         cexp = newexp
         # fig = plt.figure()
         # for idx, cexpid in enumerate(experiments):
@@ -1409,16 +1415,16 @@ class DBBact(Database):
         #     plt.title(cexpid)
         for idx2, canno in enumerate(cexp.feature_metadata.iterrows()):
             canno = canno[1]
-            plt.subplot(nrows, ncols, idx2+1)
-            numg1 = (cexp.data[:g1len, idx2]>0).sum()
-            numg2 = (cexp.data[g1len:, idx2]>0).sum()
+            plt.subplot(nrows, ncols, idx2 + 1)
+            numg1 = (cexp.data[:g1len, idx2] > 0).sum()
+            numg2 = (cexp.data[g1len:, idx2] > 0).sum()
             if canno['detail_type'] == 'low':
                 mult = -1
             else:
                 mult = 1
             # plt.pie([numg1, numg2, numother], colors=['r','g','b'])
-            plt.pie([numg1/g1len,1-numg1/g1len], colors=['mediumblue','aliceblue'], center=[0.6,0], radius=0.5)
-            plt.pie([numg2/g2len,1-numg2/g2len], colors=['r','mistyrose'], center=[-0.6,0], radius=0.5)
+            plt.pie([numg1 / g1len, 1 - numg1 / g1len], colors=['mediumblue', 'aliceblue'], center=[0.6, 0], radius=0.5)
+            plt.pie([numg2 / g2len, 1 - numg2 / g2len], colors=['r', 'mistyrose'], center=[-0.6, 0], radius=0.5)
             # plt.bar(0,mult*numg1/g1len, width=0.1, color='r')
             # plt.bar(0.15,mult*numg2/g2len, width=0.1, color='b')
             # plt.barh(np.arange(2),[numg1/g1len, numg2/g2len])
@@ -1437,9 +1443,9 @@ class DBBact(Database):
                     clen = 0
                 else:
                     otitle += ' '
-                if len(otitle)>100:
+                if len(otitle) > 100:
                     break
-            plt.text(0,0.5, otitle, fontsize=10, color=cdict[canno['expid']], horizontalalignment='center', verticalalignment='bottom')
+            plt.text(0, 0.5, otitle, fontsize=10, color=cdict[canno['expid']], horizontalalignment='center', verticalalignment='bottom')
             diff_title_high = []
             diff_title_low = []
             all_title = []
@@ -1463,8 +1469,7 @@ class DBBact(Database):
             # plt.xticks([], [])
         return plt.gcf()
 
-
-    def plot_term_annotations2(self, term, exp, features, group2_features,min_prevalence=0.01):
+    def plot_term_annotations2(self, term, exp, features, group2_features, min_prevalence=0.01):
         '''Plot a nice graph summarizing all the annotations supporting the term in the 2 groups
         '''
         # from matplotlib import rc
@@ -1843,7 +1848,7 @@ class DBBact(Database):
             annotation_seqs = self.get_annotation_sequences(cannotation['annotationid'])
             for cdetail in cannotation['details']:
                 if cdetail[0] == 'low':
-                    cterm = '-'+cdetail[1]
+                    cterm = '-' + cdetail[1]
                 else:
                     cterm = cdetail[1]
                 for cseq in annotation_seqs:
@@ -1856,14 +1861,14 @@ class DBBact(Database):
         term_f = term_features[term]
         for cterm, cterm_f in term_features.items():
             common = len(set(term_f.keys()).intersection(set(cterm_f.keys())))
-            cscore = common/(len(term_f)+len(cterm_f))
+            cscore = common / (len(term_f) + len(cterm_f))
             term_dist[cterm] = cscore
-        res = sorted(term_dist.items(),key=lambda x: x[1], reverse=True)
+        res = sorted(term_dist.items(), key=lambda x: x[1], reverse=True)
         return res
 
     def get_term_term_stats(self, term_features, term1, term2):
         term1_f = term_features[term1]
         term2_f = term_features[term2]
         common = len(set(term1_f.keys()).intersection(set(term2_f.keys())))
-        cscore = common/(len(term1_f)+len(term2_f))
+        cscore = common / (len(term1_f) + len(term2_f))
         print('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
