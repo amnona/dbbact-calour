@@ -2,4 +2,4 @@ conda:
     file: doc_conda_environment.yml
 python:
     version: 3.5
-   setup_py_install: true
+    setup_py_install: true
