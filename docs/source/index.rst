@@ -1,4 +1,4 @@
-.. calour documentation master file, created by
+.. dbbact_calour documentation master file, created by
    sphinx-quickstart on Wed Jan 11 16:08:35 2017.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
@@ -13,14 +13,11 @@ This plugin enables Calour to interact with the `dbBact <http://dbbact.org>`_ se
 Things you can do with Calour-dbBact interface
 ----------------------------------------------
 
-* Normalize, filter, reorder and cluster your data.
+* Get information about bacterial sequences from the Calour interactive heatmap
 
-* Permutation based differential abundance testing with powerful `dsFDR <http://msystems.asm.org/content/2/6/e00092-17>`_ correction.
+* Identify database terms enriched in subgroups of bacteria
 
-* Interactive heatmap plotting withh convenient zoom, pan, multiple feature selection and information about selected feature/sequence
-
-* Integration with databases (`dbBact <http://dbbact.org>`_, `phenoDB <http://msphere.asm.org/content/2/4/e00237-17>`_, `SpongeEMP <http://www.spongeemp.com/main>`_ for microbiome data, `GNPS <https://gnps.ucsd.edu/ProteoSAFe/static/gnps-splash.jsp>`_ for metabolomics) enables viewing and statistical analysis of database information about the experiment features.
-
+* Get information about the distribution of a given dbbact term in the experiment bacteria
 
 Installing Calour-dbBact
 ------------------------
@@ -32,7 +29,20 @@ Installing Calour-dbBact
 pip install git+git://github.com/amnona/dbbact-calour
 ```
 
-When you run Calour (via python/jupyter notebook/EZCalour), the dbbact-calour interface will be available.
+When you run Calour (via python/jupyter notebook/EZCalour), the dbbact-calour interface will be available. 
+
+When running the Calour.plot() command, you can use the databases=['dbbact'] parameter (set by default).
+
+To get the dbbact interface class from calour, use:
+
+```
+import calour.database
+```
+
+```
+db = calour.database._get_database_class('dbbact')
+```
+
 
 Tutorials
 ---------
@@ -52,17 +62,9 @@ API Documentation
 
    api
 
-Extending Calour
-----------------
-.. toctree::
-   :maxdepth: 2
-
-   database_interface
-
 Indices and tables
 ==================
 
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

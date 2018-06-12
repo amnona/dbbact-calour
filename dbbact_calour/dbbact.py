@@ -65,6 +65,16 @@ except:
 
 
 class DBBact(Database):
+    '''Interface the dbBact database with calour Experiment
+
+    The DBBact class stores the main functions linking a calour.Experiment to dbBact.
+    the db attribute stores the DBAccess class with all the calour.Experiment independent dbbact access functions.
+
+    Attributes:
+    -----------
+    db: DBAccess
+        contains the calour independent dbbact access functions
+    '''
     def __init__(self, exp=None, web_interface='http://dbbact.org'):
         '''
         Parameters
@@ -361,6 +371,12 @@ class DBBact(Database):
             sequence: str
         '''
         exp_features = set(exp.feature_metadata.index.values)
+        bad_features = set(features).difference(exp_features)
+        if len(bad_features) > 0:
+            logger.warning('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            features = list(set(features).intersection(exp_features))
+            if len(features) == 0:
+                raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
         bg_features = np.array(list(exp_features.difference(features)))
 
         # add all annotations to experiment if not already added
