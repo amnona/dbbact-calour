@@ -236,6 +236,15 @@ class DBBact(Database):
             annotations = exp.exp_metadata['__dbbact_annotations']
         else:
             sequence_terms, sequence_annotations, annotations, term_info = self.db.get_seq_list_fast_annotations(features)
+
+        # get the current experimentID to ignore if ignore_exp is True
+        if ignore_exp is True:
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
+
         new_annotations = {}
         if term_type == 'annotation':
             for cseq, annotations_list in sequence_annotations.items():

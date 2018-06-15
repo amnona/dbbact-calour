@@ -58,6 +58,7 @@ class DBAccess():
     When creating the DBAcess class, it stores the rest api webserver address and the username/password, which are then used
     in all function calls from this class.
     '''
+    # def __init__(self, dburl='http://127.0.0.1:5000', username=None, password=None):
     def __init__(self, dburl='http://api.dbbact.org', username=None, password=None):
         '''Create the DBAccess class
 
@@ -144,6 +145,8 @@ class DBAccess():
             where key (str) is the ontology term, info is a dict of details containing:
                 'total_annotations' : total annotations having this term in the database
                 'total_sequences' : number of annotations with this term for the sequence
+        taxonomy : str
+            the dbbact taxonomy of the sequence
         '''
         rdata = {}
         rdata['sequence'] = sequence
@@ -154,8 +157,9 @@ class DBAccess():
         res = res.json()
         annotations = res.get('annotations')
         term_info = res.get('term_info')
+        taxonomy = res.get('taxonomy')
         logger.debug('Found %d annotations for sequence %s' % (len(annotations), sequence))
-        return annotations, term_info
+        return annotations, term_info, taxonomy
 
     def get_annotation_string(self, cann):
         '''Get nice string summaries of annotation
@@ -163,7 +167,7 @@ class DBAccess():
         Parameters
         ----------
         cann : dict
-            items of the output of get_seq_annotations()
+            annotations of the output of get_seq_annotations()
 
         Returns
         -------
@@ -228,7 +232,10 @@ class DBAccess():
                     a short summary of the annotation
         '''
         shortdesc = []
-        annotations, term_info = self.get_seq_annotations(sequence)
+        annotations, term_info, taxonomy = self.get_seq_annotations(sequence)
+        if taxonomy is None:
+            taxonomy = 'taxonomy not availble'
+        shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, taxonomy))
         if len(term_info) > 0:
             terms = []
             for cterm, cinfo in term_info.items():
@@ -1317,7 +1324,7 @@ class DBAccess():
         # now go over all bacteria and find other terms associated with each
         terms_to_check = set()
         for cfeature in term_features.keys():
-            annotations, term_info = self.get_seq_annotations(cfeature)
+            annotations, term_info, taxonomy = self.get_seq_annotations(cfeature)
             for cannotation in annotations:
                 for cdetail in cannotation['details']:
                     terms_to_check.add(cdetail[1])
