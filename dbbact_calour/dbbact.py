@@ -337,9 +337,9 @@ class DBBact(Database):
             The type of annotation data to test for enrichment
             options are:
             'term' - ontology terms associated with each feature.
-             'parentterm' - ontology terms including parent terms associated with each feature.
-             'annotation' - the full annotation strings associated with each feature
-             'combined' - combine 'term' and 'annotation'
+            'parentterm' - ontology terms including parent terms associated with each feature.
+            'annotation' - the full annotation strings associated with each feature
+            'combined' - combine 'term' and 'annotation'
         ignore_exp: list of int or None or True(optional)
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
@@ -424,15 +424,35 @@ class DBBact(Database):
         newexp = newexp.sort_by_metadata(field='expid', axis='f')
         newexp.plot(feature_field='annotation', gui='qt5', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=False)
 
-    def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', gui='qt5'):
+    def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', **kwargs):
         '''
         Plot a heatmap for all annotations containing term in experiment
         Rows are the annotations, columns are the sequences (sorted by features/group2_features)
+
+        Parameters
+        ----------
+        term: str
+            the term to plot for
+        exp: calour.Experiment
+            the experiment where the analysis should look at
+        features, group2_features: list of str
+            the list of sequences for the 2 groups to compare
+        group1_name, group2_name: str, optional
+            name for group1/ group2 (for the plot)
+        **kwargs:
+            passed to calour.plot() (i.e. gui='qt5', etc.)
+
+        Returns
+        -------
+        calour.Experiment
+            with rows as annotations, columns as features from the 2 groups
         '''
         if term[0] == '-':
             term = term[1:]
-        all_seqs = features.copy()
-        all_seqs.extend(group2_features)
+        all_seqs = list(features.copy())
+        all_seqs.extend(list(group2_features))
+        if '__dbbact_sequence_annotations' not in exp.exp_metadata:
+            self.add_all_annotations_to_exp(exp)
         tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
@@ -440,7 +460,29 @@ class DBBact(Database):
         newexp = Experiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
         newexp = newexp.cluster_features(1)
         newexp = newexp.sort_by_metadata(field='expid', axis='f')
-        newexp.plot(feature_field='annotation', gui=gui, yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=True, barx_fields=['group'], barx_label=True)
+        newexp.plot(feature_field='annotation', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=True, barx_fields=['group'], barx_label=True, **kwargs)
+        return newexp
+
+    def show_term_details_diff(self, term, exp, **kwargs):
+        '''Plot all the annotations in a diff_abundance result exp for a given term, dividung according to the two groups
+
+        Parameters
+        ----------
+        term: str
+            the dbbact term to examine
+        exp: calour.Experiment
+            results of diff_abundance()
+        **kwargs: passed to exp.plot() (i.e. gui='qt5', etc)
+
+        Returns
+        -------
+        ca.Experiment
+            with annotations as rows, features as columns
+        '''
+        group1_features = exp.filter_by_metadata('_calour_diff_abundance_group', ['first'], axis='f').feature_metadata.index.values
+        group2_features = exp.filter_by_metadata('_calour_diff_abundance_group', ['second'], axis='f').feature_metadata.index.values
+        newexp = self.show_term_details(term, exp, group1_features, group2_features, **kwargs)
+        return newexp
 
     def plot_term_annotations(self, term, exp, features, group2_features, min_prevalence=0.01):
         '''Plot a nice graph summarizing all the annotations supporting the term in the 2 groups
