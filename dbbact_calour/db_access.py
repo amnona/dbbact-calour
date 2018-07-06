@@ -1122,6 +1122,8 @@ class DBAccess():
             for cdetail in cannotation['details']:
                 cterm = cdetail[1]
                 term_exps[cterm].add(cannotation['expid'])
+
+        # fix names ("LOWER IN" instead of "-") and add info about single experiment
         new_term_list = []
         for cterm in term_list:
             if cterm[0] == '-':
@@ -1129,7 +1131,8 @@ class DBAccess():
             else:
                 ccterm = cterm
             if len(term_exps[ccterm]) == 1:
-                cterm = '**%s**%s' % (list(term_exps[ccterm])[0], cterm)
+                # cterm = '**%s**%s' % (list(term_exps[ccterm])[0], ccterm)
+                cterm = '%s {*single exp %s*}' % (ccterm, list(term_exps[ccterm])[0])
                 num_removed += 1
             new_term_list.append(cterm)
         term_list = new_term_list

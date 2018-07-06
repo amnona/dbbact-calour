@@ -479,9 +479,23 @@ class DBBact(Database):
         ca.Experiment
             with annotations as rows, features as columns
         '''
-        group1_features = exp.filter_by_metadata('_calour_diff_abundance_group', ['first'], axis='f').feature_metadata.index.values
-        group2_features = exp.filter_by_metadata('_calour_diff_abundance_group', ['second'], axis='f').feature_metadata.index.values
-        newexp = self.show_term_details(term, exp, group1_features, group2_features, **kwargs)
+        names1 = exp.feature_metadata['_calour_diff_abundance_group'][exp.feature_metadata['_calour_diff_abundance_effect'] < 0]
+        if len(names1) > 0:
+            group1_name = names1.values[0]
+        else:
+            group1_name = 'group1'
+        names2 = exp.feature_metadata['_calour_diff_abundance_group'][exp.feature_metadata['_calour_diff_abundance_effect'] > 0]
+        if len(names2) > 0:
+            group2_name = names2.values[0]
+        else:
+            group2_name = 'group2'
+
+        negative = exp.feature_metadata._calour_diff_abundance_effect < 0
+        group1_features = exp.feature_metadata.index.values[negative.values]
+        positive = exp.feature_metadata._calour_diff_abundance_effect > 0
+        group2_features = exp.feature_metadata.index.values[positive.values]
+
+        newexp = self.show_term_details(term, exp, group1_features, group2_features, group1_name=group1_name, group2_name=group2_name, **kwargs)
         return newexp
 
     def plot_term_annotations(self, term, exp, features, group2_features, min_prevalence=0.01):
