@@ -47,7 +47,7 @@ def init_qt5():
     return app, app_created
 
 
-def annotate_bacteria_gui(db, seqs, exp):
+def annotate_bacteria_gui(dbclass, seqs, exp):
     '''Create a dialog for annotating the bacteria into dbbact
 
     Parameters
@@ -67,10 +67,10 @@ def annotate_bacteria_gui(db, seqs, exp):
     app, app_created = init_qt5()
 
     # test if we have user/password set-up
-    test_user_password(db)
+    test_user_password(dbclass)
 
     # test if study already in database
-    cdata = db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'])
+    cdata = dbclass.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'])
     if cdata is None:
         logger.info('Study does not exist in dbbact. Creating new study')
         cdata = study_data_ui(exp)
@@ -136,7 +136,7 @@ def annotate_bacteria_gui(db, seqs, exp):
             return msg
 
         logger.debug('Adding annotation to studyid %s' % cdata)
-        res = db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
+        res = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
         if res is None:
             msg = 'Annotation not added.'
             logger.warn(msg)
@@ -291,7 +291,7 @@ def study_data_ui(cexp):
         studyid if study  has data, None if no data
     """
     bdb = dbbact.DBBact()
-    cid = bdb.find_experiment_id(datamd5=cexp.exp_metadata['data_md5'], mapmd5=cexp.exp_metadata['sample_metadata_md5'])
+    cid = bdb.db.find_experiment_id(datamd5=cexp.exp_metadata['data_md5'], mapmd5=cexp.exp_metadata['sample_metadata_md5'])
 
     # add study details we have
     study_details = []
@@ -328,7 +328,7 @@ def study_data_ui(cexp):
         if len(newstudydata) == 0:
             logger.warn('No new items. not saving anything')
             return cid
-        dataid = bdb.add_experiment_data(newstudydata, expid=cid)
+        dataid = bdb.db.add_experiment_data(newstudydata, expid=cid)
         logger.debug('Study data saved to id %d' % dataid)
         return dataid
     return None

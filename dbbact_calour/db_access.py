@@ -1018,7 +1018,7 @@ class DBAccess():
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
-    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000):
+    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1060,6 +1060,8 @@ class DBAccess():
             int to specify the random seed for numpy.random.
         use_term_pairs: bool, optional
             True to also test enrichment in pairs of terms (i.e. homo sapiens+feces, etc.)
+        min_exps: int, optional
+            the minimal number of experiments a term appears in in order to include in results (default = 1 so all are shown)
 
         Returns
         -------
@@ -1110,30 +1112,41 @@ class DBAccess():
         # and the array of terms (rows) x all bacteria (in both groups) (cols)
         all_feature_array = np.hstack([feature_array, bg_array])
 
-        # remove non-informative terms (present in not enough bacteria)
-        non_informative = np.sum(all_feature_array > 0, 1) < min_appearances
-        all_feature_array = np.delete(all_feature_array, np.where(non_informative)[0], axis=0)
-        term_list = [x for idx, x in enumerate(term_list) if not non_informative[idx]]
-
         # remove terms present in one experiment
+        # get the number of experiments for each term
         term_exps = defaultdict(set)
-        num_removed = 0
         for cannotation in all_annotations.values():
             for cdetail in cannotation['details']:
                 cterm = cdetail[1]
                 term_exps[cterm].add(cannotation['expid'])
+        # remove the ones appearing in not enough experiments
+        remove_set = set()
+        for cterm, cexps in term_exps.items():
+            if len(cexps) < min_exps:
+                remove_set.add(cterm)
+                remove_set.add('-' + cterm)
+        remove_pos = [pos for pos, term in enumerate(term_list) if term in remove_set]
+        num_removed = len(remove_set)
+        term_list = [x for x in term_list if x not in remove_set]
+        all_feature_array = np.delete(all_feature_array, remove_pos, axis=0)
+
+        # # remove non-informative terms (present in not enough bacteria)
+        # non_informative = np.sum(all_feature_array > 0, 1) < min_appearances
+        # all_feature_array = np.delete(all_feature_array, np.where(non_informative)[0], axis=0)
+        # term_list = [x for idx, x in enumerate(term_list) if not non_informative[idx]]
 
         # fix names ("LOWER IN" instead of "-") and add info about single experiment
         new_term_list = []
         for cterm in term_list:
             if cterm[0] == '-':
-                ccterm = cterm[1:]
+                ccterm = 'LOWER IN ' + cterm[1:]
             else:
                 ccterm = cterm
             if len(term_exps[ccterm]) == 1:
                 # cterm = '**%s**%s' % (list(term_exps[ccterm])[0], ccterm)
                 cterm = '%s {*single exp %s*}' % (ccterm, list(term_exps[ccterm])[0])
-                num_removed += 1
+            else:
+                cterm = ccterm
             new_term_list.append(cterm)
         term_list = new_term_list
         logger.info('removed %d terms' % num_removed)
