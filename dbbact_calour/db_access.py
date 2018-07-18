@@ -1140,14 +1140,13 @@ class DBAccess():
         for cterm in term_list:
             if cterm[0] == '-':
                 ccterm = 'LOWER IN ' + cterm[1:]
+                cterm = cterm[1:]
             else:
                 ccterm = cterm
-            if len(term_exps[ccterm]) == 1:
+            if len(term_exps[cterm]) == 1:
                 # cterm = '**%s**%s' % (list(term_exps[ccterm])[0], ccterm)
-                cterm = '%s {*single exp %s*}' % (ccterm, list(term_exps[ccterm])[0])
-            else:
-                cterm = ccterm
-            new_term_list.append(cterm)
+                ccterm = '%s {*single exp %s*}' % (ccterm, list(term_exps[cterm])[0])
+            new_term_list.append(ccterm)
         term_list = new_term_list
         logger.info('removed %d terms' % num_removed)
 
