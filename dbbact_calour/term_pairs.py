@@ -73,9 +73,6 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 		cprecision = precision[cterm]
 		fscore[cterm] = 2 * (crecall * cprecision) / (crecall + cprecision)
 
-	for cterm in fscore.keys():
-		debug(1, 'term %s, recall %f, precision %f, fscore %f' % (cterm, recall[cterm], precision[cterm], fscore[cterm]))
-
 	# create the reduced f-scores that contain each term only once (for term pairs)
 	zz = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
 	found_items = set()

@@ -40,6 +40,7 @@ import pandas as pd
 import scipy.stats
 
 from .db_access import DBAccess
+from .term_pairs import get_enrichment_score
 from . import __version_numeric__
 from calour.util import get_config_value
 from calour.database import Database
@@ -234,6 +235,7 @@ class DBBact(Database):
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
             annotations = exp.exp_metadata['__dbbact_annotations']
+            term_info = exp.exp_metadata['__dbbact_term_info']
         else:
             sequence_terms, sequence_annotations, annotations, term_info = self.db.get_seq_list_fast_annotations(features)
 
@@ -246,10 +248,12 @@ class DBBact(Database):
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
         new_annotations = {}
+        term_scores = {}
         if term_type == 'annotation':
             for cseq, annotations_list in sequence_annotations.items():
                 if cseq not in features:
                     continue
+                term_scores[cseq] = defaultdict(float)
                 newdesc = []
                 for cannotation in annotations_list:
                     if ignore_exp is not None:
@@ -257,33 +261,56 @@ class DBBact(Database):
                         if annotationexp in ignore_exp:
                             continue
                     cdesc = self.db.get_annotation_string(annotations[cannotation])
+                    term_scores[cseq][cdesc] += 1
                     newdesc.append(cdesc)
                 new_annotations[cseq] = newdesc
         elif term_type == 'terms':
             for cseq, annotations_list in sequence_annotations.items():
                 if cseq not in features:
                     continue
+                term_scores[cseq] = defaultdict(float)
                 newdesc = []
                 for cannotation in annotations_list:
                     if ignore_exp is not None:
                         annotationexp = annotations[cannotation]['expid']
                         if annotationexp in ignore_exp:
                             continue
-                    for cdesc in annotations[cannotation]['details']:
-                        if cdesc[0] == 'all' or cdesc[0] == 'high':
-                            cterm = cdesc[1]
-                        else:
-                            cterm = '-' + cdesc[1]
+                    for ctype, cterm in annotations[cannotation]['details']:
+                        if ctype == 'low':
+                            cterm = '-' + cterm
                         newdesc.append(cterm)
+                        term_scores[cseq][cterm] += 1
                 new_annotations[cseq] = newdesc
+
+        # f-score for each term
+        elif term_type == 'fscore':
+            if ignore_exp is None:
+                ignore_exp = []
+            # we need to rekey the annotations with an str (old problem...)
+            annotations = {str(k): v for k, v in annotations.items()}
+            for cseq, annotations_list in sequence_annotations.items():
+                if cseq not in features:
+                    continue
+                term_scores[cseq] = defaultdict(float)
+                fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info)
+                if len(fscore) == 0:
+                    new_annotations[cseq] = ['NA']
+                    continue
+                sorted_fscore = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
+                new_annotations[cseq] = [sorted_fscore[0][0]]
+                term_scores[cseq] = fscore
         elif term_type == 'parentterms':
             for cseq, term_list in sequence_terms.items():
                 if cseq not in features:
                     continue
+                term_scores = defaultdict(float)
                 term_list = [x for x in term_list if x != 'na']
+                for cterm in term_list:
+                    term_scores[cseq][cterm] += 1
                 new_annotations[cseq] = term_list
         elif term_type == 'contamination':
             for cseq, annotations_list in sequence_annotations.items():
+                term_scores[cseq] = defaultdict(float)
                 if cseq not in features:
                     continue
                 newdesc = []
@@ -297,11 +324,13 @@ class DBBact(Database):
                         is_contamination += 1
                 if is_contamination > 0:
                     new_annotations[cseq] = ['contamination']
+                    term_scores[cseq]['contamination'] = is_contamination
                 else:
                     new_annotations[cseq] = []
         else:
-            raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms"' % term_type)
-        return new_annotations
+            raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms","fscore","contamination"' % term_type)
+        return term_scores
+        # return new_annotations
         # return sequence_annotations
         # return sequence_terms
 

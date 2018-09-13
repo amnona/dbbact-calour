@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from .dsfdr import dsfdr
+from .term_pairs import get_enrichment_score
 
 from . import __version_numeric__
 
@@ -480,8 +481,6 @@ class DBAccess():
         list of str
             list of the num_common most common terms
         '''
-        from .term_pairs import get_enrichment_score
-
         # convert the annotations to the compact form. we need a dict of all annotations (key is id)
         annotations_dict = {}
         for cannotation in annotations:
@@ -765,101 +764,115 @@ class DBAccess():
 
         return sequence_terms, sequence_annotations, res['annotations'], res['term_info']
 
-    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None):
-        '''Get list of terms per feature
+    # def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None):
+    #     '''Get list of terms per feature
+    #     NOTE: if exp in not None, results are also stored in exp.exp_metadata
 
-        Parameters
-        ----------
-        features : list of str
-            the features to get the terms for
-        exp : calour.Experiment (optional)
-            not None to store results in the exp (to save time for multiple queries)
-        term_type : str or None (optional)
-            The type of terms to return. optional values:
-            None to use default ('seqstring')
-            'annotation': the annotation string for each annotation (i.e. 'higher in fish compared to dogs...')
-            'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
-            'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
-            'contamination': get if bacteria is contaminant or not
-        ignore_exp : list of int or None (optional)
-            the list of experimentids to ignore (don't take info from them)
+    #     Parameters
+    #     ----------
+    #     features : list of str
+    #         the features to get the terms for
+    #     exp : calour.Experiment (optional)
+    #         not None to store results in the exp (to save time for multiple queries)
+    #     term_type : str or None (optional)
+    #         The type of terms to return. optional values:
+    #         None to use default ('seqstring')
+    #         'annotation': the annotation string for each annotation (i.e. 'higher in fish compared to dogs...')
+    #         'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
+    #         'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
+    #         'contamination': get if bacteria is contaminant or not
+    #     ignore_exp : list of int or None (optional)
+    #         the list of experimentids to ignore (don't take info from them)
 
-        Returns
-        -------
-        feature_terms : dict of list of str/int
-            key is the feature, list contains all terms associated with the feature
-        '''
-        if term_type is None:
-            term_type = 'terms'
-        if exp is not None:
-            if '__dbbact_sequence_terms' not in exp.exp_metadata:
-                # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp)
-            # and filter only the ones relevant for features
-            sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
-            sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
-            annotations = exp.exp_metadata['__dbbact_annotations']
-        else:
-            sequence_terms, sequence_annotations, annotations, term_info = self.get_seq_list_fast_annotations(features)
-        new_annotations = {}
-        if term_type == 'annotation':
-            for cseq, annotations_list in sequence_annotations.items():
-                if cseq not in features:
-                    continue
-                newdesc = []
-                for cannotation in annotations_list:
-                    if ignore_exp is not None:
-                        annotationexp = annotations[cannotation]['expid']
-                        if annotationexp in ignore_exp:
-                            continue
-                    cdesc = self.get_annotation_string(annotations[cannotation])
-                    newdesc.append(cdesc)
-                new_annotations[cseq] = newdesc
-        elif term_type == 'terms':
-            for cseq, annotations_list in sequence_annotations.items():
-                if cseq not in features:
-                    continue
-                newdesc = []
-                for cannotation in annotations_list:
-                    if ignore_exp is not None:
-                        annotationexp = annotations[cannotation]['expid']
-                        if annotationexp in ignore_exp:
-                            continue
-                    for cdesc in annotations[cannotation]['details']:
-                        if cdesc[0] == 'all' or cdesc[0] == 'high':
-                            cterm = cdesc[1]
-                        else:
-                            cterm = '-' + cdesc[1]
-                        newdesc.append(cterm)
-                new_annotations[cseq] = newdesc
-        elif term_type == 'parentterms':
-            for cseq, term_list in sequence_terms.items():
-                if cseq not in features:
-                    continue
-                term_list = [x for x in term_list if x != 'na']
-                new_annotations[cseq] = term_list
-        elif term_type == 'contamination':
-            for cseq, annotations_list in sequence_annotations.items():
-                if cseq not in features:
-                    continue
-                newdesc = []
-                is_contamination = 0
-                for cannotation in annotations_list:
-                    if ignore_exp is not None:
-                        annotationexp = annotations[cannotation]['expid']
-                        if annotationexp in ignore_exp:
-                            continue
-                    if annotations[cannotation]['annotationtype'] == 'contamination':
-                        is_contamination += 1
-                if is_contamination > 0:
-                    new_annotations[cseq] = ['contamination']
-                else:
-                    new_annotations[cseq] = []
-        else:
-            raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms"' % term_type)
-        return new_annotations
-        # return sequence_annotations
-        # return sequence_terms
+    #     Returns
+    #     -------
+    #     feature_terms : dict of list of str/int
+    #         key is the feature, list contains all terms associated with the feature
+    #     '''
+    #     if term_type is None:
+    #         term_type = 'terms'
+    #     if exp is not None:
+    #         if '__dbbact_sequence_terms' not in exp.exp_metadata:
+    #             # if annotations not yet in experiment - add them
+    #             self.add_all_annotations_to_exp(exp)
+
+    #         # and filter only the ones relevant for features
+    #         sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
+    #         sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
+    #         annotations = exp.exp_metadata['__dbbact_annotations']
+    #         term_info = exp.exp_metadata['__dbbact_term_info']
+    #     else:
+    #         sequence_terms, sequence_annotations, annotations, term_info = self.get_seq_list_fast_annotations(features)
+    #     new_annotations = {}
+    #     if term_type == 'annotation':
+    #         for cseq, annotations_list in sequence_annotations.items():
+    #             if cseq not in features:
+    #                 continue
+    #             newdesc = []
+    #             for cannotation in annotations_list:
+    #                 if ignore_exp is not None:
+    #                     annotationexp = annotations[cannotation]['expid']
+    #                     if annotationexp in ignore_exp:
+    #                         continue
+    #                 cdesc = self.get_annotation_string(annotations[cannotation])
+    #                 newdesc.append(cdesc)
+    #             new_annotations[cseq] = newdesc
+    #     elif term_type == 'terms':
+    #         for cseq, annotations_list in sequence_annotations.items():
+    #             if cseq not in features:
+    #                 continue
+    #             newdesc = []
+    #             for cannotation in annotations_list:
+    #                 if ignore_exp is not None:
+    #                     annotationexp = annotations[cannotation]['expid']
+    #                     if annotationexp in ignore_exp:
+    #                         continue
+    #                 for cdesc in annotations[cannotation]['details']:
+    #                     if cdesc[0] == 'all' or cdesc[0] == 'high':
+    #                         cterm = cdesc[1]
+    #                     else:
+    #                         cterm = '-' + cdesc[1]
+    #                     newdesc.append(cterm)
+    #             new_annotations[cseq] = newdesc
+    #     # f-score for each term
+    #     elif term_type == 'fscore':
+    #         term_scores = defaultdict(float)
+    #         for cseq, annotations_list in sequence_annotations.items():
+    #             if cseq not in features:
+    #                 continue
+    #             fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info)
+    #             if cseq=='TACGTAGGTGGCAAGCGTTGTCCGGATTTACTGGGCGTAAAGAGTATGTAGGTGGGCATTTAAGTCAGATGTGAAATTCCCGGGCTTAACCTGGGAGCTGCATTTGATACTGGGTGTCTAGAGTGCAGGAGAGGAAAGTGGAATTCCTAG':
+    #                 print(fscore)
+    #             fscore = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
+    #             new_annotations[cseq] = [fscore[0]]
+    #     elif term_type == 'parentterms':
+    #         for cseq, term_list in sequence_terms.items():
+    #             if cseq not in features:
+    #                 continue
+    #             term_list = [x for x in term_list if x != 'na']
+    #             new_annotations[cseq] = term_list
+    #     elif term_type == 'contamination':
+    #         for cseq, annotations_list in sequence_annotations.items():
+    #             if cseq not in features:
+    #                 continue
+    #             newdesc = []
+    #             is_contamination = 0
+    #             for cannotation in annotations_list:
+    #                 if ignore_exp is not None:
+    #                     annotationexp = annotations[cannotation]['expid']
+    #                     if annotationexp in ignore_exp:
+    #                         continue
+    #                 if annotations[cannotation]['annotationtype'] == 'contamination':
+    #                     is_contamination += 1
+    #             if is_contamination > 0:
+    #                 new_annotations[cseq] = ['contamination']
+    #             else:
+    #                 new_annotations[cseq] = []
+    #     else:
+    #         raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms","contamination","fscore"' % term_type)
+    #     return new_annotations
+    #     # return sequence_annotations
+    #     # return sequence_terms
 
     def delete_annotation(self, data):
         '''Delete the annotation from the database
