@@ -40,6 +40,7 @@ import pandas as pd
 import scipy.stats
 
 from .db_access import DBAccess
+from .term_pairs import get_enrichment_score, get_terms
 from . import __version_numeric__
 from calour.util import get_config_value
 from calour.database import Database
@@ -173,11 +174,12 @@ class DBBact(Database):
         '' if ok, otherwise error string
         '''
         logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
-        sequence_terms, sequence_annotations, annotations, term_info = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values)
+        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values)
         exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
         exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
         exp.exp_metadata['__dbbact_annotations'] = annotations
         exp.exp_metadata['__dbbact_term_info'] = term_info
+        exp.exp_metadata['__dbbact_taxonomy'] = taxonomy
         logger.info('Added annotation data to experiment. Total %d annotations, %d terms' % (len(annotations), len(sequence_terms)))
         return ''
 
@@ -200,8 +202,8 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None):
-        '''Get list of terms per feature
+    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single')):
+        '''Get dict of terms scores per feature
 
         Parameters
         ----------
@@ -218,6 +220,10 @@ class DBBact(Database):
             'contamination': get if bacteria is contaminant or not
         ignore_exp : list of int or None (optional)
             the list of experimentids to ignore (don't take info from them)
+        term_method: list of str, optional
+            the methods to get all the terms for each feature. can include:
+                'singe': get the single terms per each feature (i.e. 'feces', '-control', etc.)
+                'pairs': get the term pairs for each feature (i.e. 'feces+homo sapiens', etc.)
 
         Returns
         -------
@@ -234,8 +240,9 @@ class DBBact(Database):
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
             annotations = exp.exp_metadata['__dbbact_annotations']
+            term_info = exp.exp_metadata['__dbbact_term_info']
         else:
-            sequence_terms, sequence_annotations, annotations, term_info = self.db.get_seq_list_fast_annotations(features)
+            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features)
 
         # get the current experimentID to ignore if ignore_exp is True
         if ignore_exp is True:
@@ -246,10 +253,12 @@ class DBBact(Database):
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
         new_annotations = {}
+        term_scores = {}
         if term_type == 'annotation':
             for cseq, annotations_list in sequence_annotations.items():
                 if cseq not in features:
                     continue
+                term_scores[cseq] = defaultdict(float)
                 newdesc = []
                 for cannotation in annotations_list:
                     if ignore_exp is not None:
@@ -257,33 +266,59 @@ class DBBact(Database):
                         if annotationexp in ignore_exp:
                             continue
                     cdesc = self.db.get_annotation_string(annotations[cannotation])
+                    term_scores[cseq][cdesc] += 1
                     newdesc.append(cdesc)
                 new_annotations[cseq] = newdesc
         elif term_type == 'terms':
             for cseq, annotations_list in sequence_annotations.items():
                 if cseq not in features:
                     continue
+                term_scores[cseq] = defaultdict(float)
                 newdesc = []
                 for cannotation in annotations_list:
                     if ignore_exp is not None:
                         annotationexp = annotations[cannotation]['expid']
                         if annotationexp in ignore_exp:
                             continue
-                    for cdesc in annotations[cannotation]['details']:
-                        if cdesc[0] == 'all' or cdesc[0] == 'high':
-                            cterm = cdesc[1]
-                        else:
-                            cterm = '-' + cdesc[1]
-                        newdesc.append(cterm)
-                new_annotations[cseq] = newdesc
+                    annotation_terms = get_terms(annotations[cannotation], term_types=term_method)
+                    for cterm in annotation_terms:
+                        term_scores[cseq][cterm] += 1
+                    # for ctype, cterm in annotations[cannotation]['details']:
+                    #     if ctype == 'low':
+                    #         cterm = '-' + cterm
+                    #     newdesc.append(cterm)
+                    #     term_scores[cseq][cterm] += 1
+                new_annotations[cseq] = annotation_terms
+
+        # f-score for each term
+        elif term_type == 'fscore':
+            if ignore_exp is None:
+                ignore_exp = []
+            # we need to rekey the annotations with an str (old problem...)
+            annotations = {str(k): v for k, v in annotations.items()}
+            for cseq, annotations_list in sequence_annotations.items():
+                if cseq not in features:
+                    continue
+                term_scores[cseq] = defaultdict(float)
+                fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, term_types=term_method)
+                if len(fscore) == 0:
+                    new_annotations[cseq] = ['NA']
+                    continue
+                sorted_fscore = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
+                new_annotations[cseq] = [sorted_fscore[0][0]]
+                term_scores[cseq] = fscore
         elif term_type == 'parentterms':
             for cseq, term_list in sequence_terms.items():
                 if cseq not in features:
                     continue
+                term_scores = defaultdict(float)
                 term_list = [x for x in term_list if x != 'na']
+                for cterm in term_list:
+                    term_scores[cseq][cterm] += 1
                 new_annotations[cseq] = term_list
         elif term_type == 'contamination':
             for cseq, annotations_list in sequence_annotations.items():
+                term_scores[cseq] = defaultdict(float)
                 if cseq not in features:
                     continue
                 newdesc = []
@@ -297,13 +332,82 @@ class DBBact(Database):
                         is_contamination += 1
                 if is_contamination > 0:
                     new_annotations[cseq] = ['contamination']
+                    term_scores[cseq]['contamination'] = is_contamination
                 else:
                     new_annotations[cseq] = []
         else:
-            raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms"' % term_type)
-        return new_annotations
+            raise ValueError('term_type %s not supported in get_feature_terms. Possible values are "annotation","terms","parentterms","fscore","contamination"' % term_type)
+        return term_scores
+        # return new_annotations
         # return sequence_annotations
         # return sequence_terms
+
+    def filter_features_based_on_terms(self, exp, terms, filter_method='any', term_types=('single'), ignore_exp=None, negate=False):
+        '''filter features based on how many experiments they appear in
+
+        Parameters
+        ----------
+        exp: AmpliconExperiment
+            The experiment to filter features from
+        terms: dict of {term(str): min_experiments(int)}
+            the minimal number of experiments (value) for each term (key) used in the filtering.
+            keep the feature if we observe the tern in >= min_experiments
+        filter_method: str, optional
+            options are:
+            'any': keep if any of the terms satisfy the minimal number of experiments (i.e. one term ok will keep the feature)
+            'all': keep only if all terms satisfy the minimal number of experimetns (i.e. one term not ok will remove the features)
+        term_types: list of str, optional
+            'single': use single terms from the annotations (i.e. 'feces', '-control')
+            'pairs': use term pairs from the annotations (i.e. 'feces+homo sapiens')
+        ignore exp: list of int or None, optional
+            list of xperiment IDs to ignore annotations from
+        negate: bool, optional
+            True to reverse the filtering (keep instead of remove)
+        '''
+        if '__dbbact_sequence_terms' not in exp.exp_metadata:
+                # if annotations not yet in experiment - add them
+            self.add_all_annotations_to_exp(exp)
+        # get the dbbact annotations
+        sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
+        sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
+        annotations = exp.exp_metadata['__dbbact_annotations']
+        term_info = exp.exp_metadata['__dbbact_term_info']
+
+        # filter
+        keep_features = []
+        for cseq, annotations_list in sequence_annotations.items():
+            if cseq not in exp.feature_metadata.index:
+                continue
+            term_scores = defaultdict(float)
+            for cannotation in annotations_list:
+                if ignore_exp is not None:
+                    annotationexp = annotations[cannotation]['expid']
+                    if annotationexp in ignore_exp:
+                        continue
+                annotation_terms = get_terms(annotations[cannotation], term_types=term_types)
+                for cterm in annotation_terms:
+                    term_scores[cterm] += 1
+            if filter_method == 'any':
+                keep = False
+                for cterm, cterm_min_count in terms.items():
+                    if cterm not in term_scores:
+                        continue
+                    if term_scores[cterm] >= cterm_min_count:
+                        keep = True
+                        break
+            elif filter_method == 'all':
+                keep = True
+                for cterm, cterm_min_count in terms.items():
+                    if cterm not in term_scores:
+                        keep = False
+                        break
+                    if term_scores[cterm] < cterm_min_count:
+                        keep = False
+                        break
+            if keep:
+                keep_features.append(cseq)
+        newexp = exp.filter_ids(keep_features, axis='f', negate=negate)
+        return newexp
 
     def upadte_annotation(self, annotation, exp=None):
         '''Update an existing annotation
@@ -320,7 +424,7 @@ class DBBact(Database):
             empty if ok, otherwise the error encountered
         '''
         from . import dbannotation
-        dbannotation.update_annotation_gui(self, annotation, exp)
+        dbannotation.update_annotation_gui(self.db, annotation, exp)
 
     def enrichment(self, exp, features, **kwargs):
         '''Get the list of enriched terms in features compared to all features in exp.
@@ -661,7 +765,7 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('mediumblue', 'r', 'g')):
+    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue')):
         '''Plot a venn diagram for all annotations containing the term, showing overlap between the term and the two bacteria groups
         Parameters
         ----------
