@@ -60,6 +60,7 @@ class DBAccess():
     in all function calls from this class.
     '''
     # def __init__(self, dburl='http://127.0.0.1:5001', username=None, password=None):
+    #     print('!!!using local dbbact server!!!')
     def __init__(self, dburl='http://api.dbbact.org', username=None, password=None):
         '''Create the DBAccess class
 
@@ -722,6 +723,8 @@ class DBAccess():
                     total number of annotations where this term appears (as a parent)
                 'total_sequences' : int
                     total number of sequences in annotations where this term appears (as a parent)
+        taxonomy: dict of {sequence(str): taxonomy(str)}
+            the dbbact assigned taxonomy for each sequence
         '''
         logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
         rdata = {}
@@ -731,6 +734,7 @@ class DBAccess():
             logger.warning('error getting fast annotations for sequence list. got status code %s' % res.status_code)
             raise ValueError('error getting fast annotations for sequence list. got status code %s' % res.status_code)
         res = res.json()
+        logger.info('got %d annotations' % len(res['annotations']))
 
         sequence_terms = {}
         sequence_annotations = {}
@@ -760,9 +764,14 @@ class DBAccess():
         total_annotations = 0
         for cseq_annotations in sequence_annotations.values():
             total_annotations += len(cseq_annotations)
-        logger.info('Got %d annotations' % total_annotations)
+        logger.info('Got %d annotation-sequence pairs' % total_annotations)
 
-        return sequence_terms, sequence_annotations, res['annotations'], res['term_info']
+        taxdict = {}
+        if 'taxonomy' in res:
+            for idx, cseq in enumerate(sequences):
+                taxdict[cseq] = res['taxonomy'][idx]
+
+        return sequence_terms, sequence_annotations, res['annotations'], res['term_info'], taxdict
 
     # def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None):
     #     '''Get list of terms per feature
@@ -1176,7 +1185,8 @@ class DBAccess():
             if len(term_exps[cterm]) == 1:
                 if add_single_exp_warning:
                     # cterm = '**%s**%s' % (list(term_exps[ccterm])[0], ccterm)
-                    ccterm = '%s {*single exp %s*}' % (ccterm, list(term_exps[cterm])[0])
+                    # ccterm = '%s {*single exp %s*}' % (ccterm, list(term_exps[cterm])[0])
+                    ccterm = '%s *' % (ccterm)
             new_term_list.append(ccterm)
         term_list = new_term_list
         logger.info('removed %d terms' % num_removed)
