@@ -729,6 +729,8 @@ class DBAccess():
         logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
         rdata = {}
         rdata['sequences'] = list(sequences)
+        rdata['get_term_info'] = True
+        rdata['get_taxaonomy'] = True
         res = self._get('sequences/get_fast_annotations', rdata)
         if res.status_code != 200:
             logger.warning('error getting fast annotations for sequence list. got status code %s' % res.status_code)
@@ -768,8 +770,12 @@ class DBAccess():
 
         taxdict = {}
         if 'taxonomy' in res:
+            print('pita')
             for idx, cseq in enumerate(sequences):
                 taxdict[cseq] = res['taxonomy'][idx]
+        else:
+            print('pata')
+            print(res.keys())
 
         return sequence_terms, sequence_annotations, res['annotations'], res['term_info'], taxdict
 

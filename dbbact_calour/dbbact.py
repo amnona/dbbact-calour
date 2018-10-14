@@ -227,8 +227,8 @@ class DBBact(Database):
 
         Returns
         -------
-        feature_terms : dict of list of str/int
-            key is the feature, list contains all terms associated with the feature
+        feature_terms : dict of {feature(str: dict of {term(str): score(float)})}
+            key is the feature, value is a dict of the score (value) for each term(key) for this feature
         '''
         if term_type is None:
             term_type = 'terms'
@@ -275,6 +275,7 @@ class DBBact(Database):
                     continue
                 term_scores[cseq] = defaultdict(float)
                 newdesc = []
+                annotation_terms = []
                 for cannotation in annotations_list:
                     if ignore_exp is not None:
                         annotationexp = annotations[cannotation]['expid']
@@ -765,7 +766,7 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue')):
+    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0):
         '''Plot a venn diagram for all annotations containing the term, showing overlap between the term and the two bacteria groups
         Parameters
         ----------
@@ -785,6 +786,10 @@ class DBBact(Database):
             Not implemented yet
         set_colors: tuple of str, optional
             Colors to use for group1. group2, annotation
+        min_overlap: float, optional
+            The minimal fraction of annotation bacteria that overlap with either of both groups in order to show annotation
+        min_size: int, optional
+            minimal number of bacteria in the annotation in order to show it
 
         Returns
         -------
@@ -822,7 +827,6 @@ class DBBact(Database):
         for idx2, canno in enumerate(newexp.feature_metadata.iterrows()):
             canno = canno[1]
             aseqs = self.db.get_annotation_sequences(int(canno['annotationid']))
-            f = plt.figure()
             gg1 = set([exp.feature_metadata.index.get_loc(x) for x in group1])
             gg2 = set([exp.feature_metadata.index.get_loc(x) for x in group2])
             cdata = newexp.get_data(sparse=False)
@@ -839,6 +843,14 @@ class DBBact(Database):
             vvals['101'] = og1
             vvals['011'] = og2
             vvals['111'] = oga
+
+            annotation_overlap = (og1 + og2) / len(aseqs)
+            if annotation_overlap < min_overlap:
+                continue
+            if len(aseqs) < min_size:
+                continue
+
+            f = plt.figure()
             # venn3([gg1, gg2, anno_group], set_labels=(group1_name, group2_name, 'annotation'), set_colors=['mediumblue', 'r', 'g'])
             venn3(vvals, set_labels=(group1_name, group2_name, 'annotation'), set_colors=set_colors)
             plt.title('%s (expid %s)' % (canno['annotation'], canno['expid']))
