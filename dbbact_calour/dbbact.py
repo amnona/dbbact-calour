@@ -76,19 +76,23 @@ class DBBact(Database):
     db: DBAccess
         contains the calour independent dbbact access functions
     '''
-    def __init__(self, exp=None, web_interface='http://dbbact.org'):
+    def __init__(self, exp=None, dburl='http://api.dbbact.org', web_interface='http://dbbact.org'):
         '''
         Parameters
         ----------
         exp : calour.Experiment, optional
             the experiment to link to
+        dburl: str, optional
+            the web address for the dbbact REST API
         web_interface: str, optional
             web address for the dbBact website (non REST API) - used for getting/showing dbBact information page
         '''
         super().__init__(database_name='dbBact', methods=['get', 'annotate', 'enrichment'])
         username = get_config_value('username', section='dbbact')
         password = get_config_value('password', section='dbbact')
-        self.db = DBAccess(username=username, password=password)
+        # dburl = 'http://127.0.0.1:5001'
+        # print('Using local database!!!!')
+        self.db = DBAccess(dburl=dburl, username=username, password=password)
         self.web_interface = web_interface
 
     def version(self):
@@ -554,6 +558,8 @@ class DBBact(Database):
         '''
         if term[0] == '-':
             term = term[1:]
+        term = term.lstrip('LOWER IN ')
+        term = term.rstrip(' *')
         all_seqs = list(features.copy())
         all_seqs.extend(list(group2_features))
         if '__dbbact_sequence_annotations' not in exp.exp_metadata:

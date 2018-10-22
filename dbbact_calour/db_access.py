@@ -59,8 +59,6 @@ class DBAccess():
     When creating the DBAcess class, it stores the rest api webserver address and the username/password, which are then used
     in all function calls from this class.
     '''
-    # def __init__(self, dburl='http://127.0.0.1:5001', username=None, password=None):
-    #     print('!!!using local dbbact server!!!')
     def __init__(self, dburl='http://api.dbbact.org', username=None, password=None):
         '''Create the DBAccess class
 
@@ -730,7 +728,9 @@ class DBAccess():
         rdata = {}
         rdata['sequences'] = list(sequences)
         rdata['get_term_info'] = True
-        rdata['get_taxaonomy'] = True
+        rdata['get_taxonomy'] = True
+        rdata['get_parents'] = False
+        rdata['get_all_exp_annotations'] = False
         res = self._get('sequences/get_fast_annotations', rdata)
         if res.status_code != 200:
             logger.warning('error getting fast annotations for sequence list. got status code %s' % res.status_code)
@@ -770,12 +770,8 @@ class DBAccess():
 
         taxdict = {}
         if 'taxonomy' in res:
-            print('pita')
             for idx, cseq in enumerate(sequences):
                 taxdict[cseq] = res['taxonomy'][idx]
-        else:
-            print('pata')
-            print(res.keys())
 
         return sequence_terms, sequence_annotations, res['annotations'], res['term_info'], taxdict
 
