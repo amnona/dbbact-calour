@@ -1014,3 +1014,157 @@ class DBBact(Database):
         # get the differentially abundant terms between the two sample groups
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
+
+    def draw_cloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None):
+        '''Draw a word_cloud for a given set of sequences
+
+        Parameters
+        ----------
+        exp: calour.Experiment or None, optional
+            The experiment containing the sequences (features) of interest.
+            None to not ise the experiment (get the annotations for the features supplied from dbbact and use them)
+        features: list of str or None, optional
+            None to use the features from exp. Otherwise, a list of features ('ACGT' sequences) that is a subset of the features in exp (if exp is supplied)
+            Note: if exp is None, must provide features.
+        type: str, optional
+            What score to use for the word cloud. Options are:
+            'recall': sizes are based on the recall (fraction of dbbact term containing annotations that contain the sequences)
+            'precision': sizes are based on the precision (fraction of sequence annotations of the experiment sequences that contain the term)
+            'fscore': a combination of recall and precition (r*p / (r+p))
+
+        Returns
+        -------
+        matplotlib.figure
+        '''
+    # def draw_cloud(fscores, recall={}, precision={}, term_count={}):
+        '''
+        Draw a wordcloud for a list of terms
+
+        Parameters
+        ----------
+        fscores: dict of {term (str): fscore(float)}
+            the f-score for each term (determines the size)
+        recall : dict of {term (str): recall(float)}
+            the recall score for each term (determines the green color)
+        precision : dict of {term (str): precision(float)}
+            the precision score for each term (determines the blue color)
+        term_count: dict of {term (str): number of experiments where the term was observed(int)}
+            The number of unique experiments where the term annotations are coming from
+        local_save_name : str or None (optional)
+            if str, save also as pdf to local file local_save_name (for MS figures) in high res
+
+        Returns
+        -------
+        BytesIO file with the image
+        '''
+        from wordcloud import WordCloud
+        import matplotlib.pyplot as plt
+
+        # get the annotations
+        if exp is not None:
+            if '__dbbact_sequence_terms' not in exp.exp_metadata:
+                # if annotations not yet in experiment - add them
+                self.add_all_annotations_to_exp(exp)
+            # and filter only the ones relevant for features
+            sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
+            sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
+            annotations = exp.exp_metadata['__dbbact_annotations']
+            term_info = exp.exp_metadata['__dbbact_term_info']
+            if features is None:
+                features = exp.feature_metadata.index.values
+        else:
+            if features is None:
+                raise ValueError('Must supply experiment or features to use for wordcloud')
+            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features)
+
+        # change the sequence annotations from dict to list of tuples
+        sequence_annotations = [(k, v) for k, v in sequence_annotations.items()]
+
+        # calculate the recall, precision, fscore for each term
+        if ignore_exp is None:
+            ignore_exp = []
+        # we need to rekey the annotations with an str (old problem...)
+        annotations = {str(k): v for k, v in annotations.items()}
+
+        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info)
+
+        logger.debug('draw_cloud for %d words' % len(fscores))
+        if len(fscores) == 0:
+            logger.info('no words for wordcloud')
+            return ''
+
+        if term_type == 'fscore':
+            score = fscores
+        elif term_type == 'recall':
+            score = recall
+        elif term_type == 'precision':
+            score = precision
+        else:
+            raise ValueError('term_type %s not recognized. options are: fscore, recall, precision')
+
+        # normalize the fractions to a scale max=1
+        new_scores = {}
+        if score is not None:
+            maxval = max(score.values())
+            logger.debug('normalizing score. maxval is %f' % maxval)
+            for ckey, cval in score.items():
+                new_scores[ckey] = score[ckey] / maxval
+        score = new_scores
+
+        wc = WordCloud(background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
+        # wc = WordCloud(width=400 * 3, height=200 * 3, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
+        # else:
+        #     wc = WordCloud(background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
+
+        if isinstance(score, str):
+            logger.debug('generating from words list')
+            wordcloud = wc.generate(score)
+        elif isinstance(score, dict):
+            logger.debug('generating from frequency dict')
+            wordcloud = wc.generate_from_frequencies(score)
+        else:
+            logger.info('unknown type for generate_wordcloud!')
+
+        fig = plt.figure()
+        plt.imshow(wordcloud)
+        plt.axis("off")
+        fig.tight_layout()
+        return fig
+
+
+def _get_color(word, font_size, position, orientation, font_path, random_state, fscore, recall, precision, term_count):
+    '''Get the color for a wordcloud term based on the term_count and higher/lower
+
+    If term starts with "-", it is lower in and colored red. otherwise colored blue
+    If we have term_count, we use it to color from close to white(low count) to full color (>=10 experiments)
+
+    Parameters
+    ----------
+    fscores: dict of {term(str): fscore(float)}
+        between 0 and 1
+    recall: dict of {term(str): recall score(float)}, optional
+    precision: dict of {term(str): precision score(float)}, optional
+    term_count: dict of {term(str): number of experiments with term(float)}, optional
+        used to determine the color intensity
+
+
+    Returns
+    -------
+    str: the color in hex "0#RRGGBB"
+    '''
+    import matplotlib as mpl
+    cmap = mpl.cm.get_cmap('bwr')
+    if word in term_count:
+        count = min(term_count[word], 10)
+    else:
+        count = 10
+
+    if word[0] == '-':
+        rgba = cmap(float(0.5 + 0.25 + count / 40), bytes=True)
+    else:
+        rgba = cmap(float(0.5 - 0.25 - count / 40), bytes=True)
+
+    red = format(rgba[0], '02x')
+    green = format(rgba[1], '02x')
+    blue = format(rgba[2], '02x')
+    return '#%s%s%s' % (red, green, blue)
