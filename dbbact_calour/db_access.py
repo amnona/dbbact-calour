@@ -728,7 +728,7 @@ class DBAccess():
         rdata = {}
         rdata['sequences'] = list(sequences)
         rdata['get_term_info'] = True
-        rdata['get_taxonomy'] = True
+        rdata['get_taxonomy'] = False
         rdata['get_parents'] = False
         rdata['get_all_exp_annotations'] = False
         res = self._get('sequences/get_fast_annotations', rdata)
@@ -770,8 +770,9 @@ class DBAccess():
 
         taxdict = {}
         if 'taxonomy' in res:
-            for idx, cseq in enumerate(sequences):
-                taxdict[cseq] = res['taxonomy'][idx]
+            if len(res['taxonomy']) > 0:
+                for idx, cseq in enumerate(sequences):
+                    taxdict[cseq] = res['taxonomy'][idx]
 
         return sequence_terms, sequence_annotations, res['annotations'], res['term_info'], taxdict
 

@@ -178,7 +178,7 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 		for cterm, cexplist in cseq_term_exps.items():
 			debug(1, 'processing term %s' % cterm)
 			if cterm not in term_info:
-					debug(4, 'term %s not in term_info' % cterm)
+					debug(2, 'term %s not in term_info' % cterm)
 					continue
 			try:
 				observed = term_info[cterm]['total_experiments']
