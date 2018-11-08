@@ -26,6 +26,7 @@ Functions
    DBBact.plot_term_annotations
    DBBact.plot_term_annotations_venn
    DBBact.sample_enrichment
+   DBBact.draw_wordcloud
 '''
 
 from collections import defaultdict
@@ -1015,7 +1016,7 @@ class DBBact(Database):
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
-    def draw_cloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None):
+    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None):
         '''Draw a word_cloud for a given set of sequences
 
         Parameters
