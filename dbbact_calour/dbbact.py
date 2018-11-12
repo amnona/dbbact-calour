@@ -25,6 +25,7 @@ Functions
    DBBact.show_term_details
    DBBact.plot_term_annotations
    DBBact.plot_term_annotations_venn
+   DBBact.plot_term_venn_all
    DBBact.sample_enrichment
    DBBact.draw_wordcloud
 '''
@@ -46,6 +47,7 @@ from . import __version_numeric__
 from calour.util import get_config_value
 from calour.database import Database
 from calour.experiment import Experiment
+from calour.util import _to_list
 
 logger = getLogger(__name__)
 
@@ -91,8 +93,8 @@ class DBBact(Database):
         super().__init__(database_name='dbBact', methods=['get', 'annotate', 'enrichment'])
         username = get_config_value('username', section='dbbact')
         password = get_config_value('password', section='dbbact')
-        # dburl = 'http://127.0.0.1:5001'
-        # print('Using local database!!!!')
+        dburl = 'http://127.0.0.1:5001'
+        print('Using local database!!!!')
         self.db = DBAccess(dburl=dburl, username=username, password=password)
         self.web_interface = web_interface
 
@@ -773,6 +775,119 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
+    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), max_size=None, ignore_exp=[]):
+        '''Plot a venn diagram for all sequences appearing in any annotation containing the term, and intersect with both groups of bacteria
+
+        Parameters
+        ----------
+        terms: str or list of str
+            the terms to test the overlap for. if more than one term supplied (list of str), look for all otus in the overlap
+        exp: calour.Experiment or None
+            the experiment containing the bacteria groups or None to use the bacteria_groups parameter
+        bacteria_groups: (list of str, list of str) or None, optional
+            if not None, use bacteria sequences from the two lists as the two groups.
+            If None, use groups from exp
+        set_colors: tuple of (str, str, str), optional
+            The colors for group1, group2, term circles
+        max_size: int or None, optional
+            if not None, clip term circle size to max_size.
+            Used to make cases where term has lots of sequences nicer.
+            NOTE: it changes the circle size and number!
+        ignore_exp: list of int or True (optional)
+            List of experiment ids to ignore in the analysis
+            True to ignore annotations from the current experiment (exp)
+            None (default) to use annotations from all experiments including the current one
+        '''
+        import matplotlib.pyplot as plt
+        try:
+            from matplotlib_venn import venn3
+        except Exception as err:
+            print(err)
+            raise ValueError("Error importing matplotlib_venn. Is it installed? If not, install it using: pip install matplotlib-venn")
+
+        # get the two bacteria groups
+        if bacteria_groups is None:
+            vals = exp.feature_metadata['_calour_diff_abundance_group'].unique()
+            group1 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_diff_abundance_group'] == vals[0]].values)
+            group1_name = vals[0]
+            group2 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_diff_abundance_group'] == vals[1]].values)
+            group2_name = vals[1]
+        else:
+            group1 = bacteria_groups[0]
+            group2 = bacteria_groups[1]
+            group1_name = 'group1'
+            group2_name = 'group2'
+
+        # get the dbbact sequenceIDs for the bacteria
+        g1idst = self.db.get_sequences_ids(list(group1))
+        g2idst = self.db.get_sequences_ids(list(group2))
+
+        # convert from list of list to a set
+        g1ids = set()
+        for cs in g1idst:
+            for cid in cs:
+                g1ids.add(cid)
+
+        g2ids = set()
+        for cs in g2idst:
+            for cid in cs:
+                g2ids.add(cid)
+
+        # if ignore exp is True, it means we should ignore the current experiment
+        if ignore_exp is True:
+            if exp is None:
+                raise ValueError('Cannot ignore current experiment when exp=None. Please explicitly specify ignore_exp=[ID1,ID2...]')
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
+
+        # get the term sequence ids
+        terms = _to_list(terms)
+        termids = None
+
+        # TODO: fix the lower in test
+        # remove the "-" for the terms
+        new_terms = []
+        for cterm in terms:
+            if cterm[0] == '-':
+                cterm = cterm[1:]
+            new_terms.append(cterm)
+        terms = new_terms
+
+        # get the sequence ids that have these terms
+        termids = set(self.db.get_db_term_features(terms, ignore_exp=ignore_exp))
+
+        og1 = len(termids.intersection(g1ids))
+        og2 = len(termids.intersection(g2ids))
+        ogg = 0
+        oga = 0
+        vvals = {}
+        vvals['100'] = len(g1ids) - og1 - ogg
+        vvals['010'] = len(g2ids) - og2 - ogg
+        vvals['001'] = len(termids) - og1 - og2
+        vvals['110'] = ogg
+        vvals['101'] = og1
+        vvals['011'] = og2
+        vvals['111'] = oga
+
+        if max_size is not None:
+            if vvals['001'] > max_size:
+                print('WARNING: clipped term circle size to %d. Real size (number of term seqs) should be: %d' % (max_size, len(termids)))
+                vvals['001'] = max_size
+
+        # for k, v in vvals.items():
+        #     if v > 0:
+        #         vvals[k] = np.log2(v)
+
+        f = plt.figure()
+        termstr = '+'.join(terms)
+        # venn3([gg1, gg2, anno_group], set_labels=(group1_name, group2_name, 'annotation'), set_colors=['mediumblue', 'r', 'g'])
+        venn3(vvals, set_labels=(group1_name, group2_name, termstr), set_colors=set_colors)
+        plt.title('term overlaps for %s' % termstr)
+        return f
+
     def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0):
         '''Plot a venn diagram for all annotations containing the term, showing overlap between the term and the two bacteria groups
         Parameters
@@ -802,7 +917,11 @@ class DBBact(Database):
         -------
         list of figures
         '''
-        from matplotlib_venn import venn3
+        try:
+            from matplotlib_venn import venn3
+        except Exception as err:
+            print(err)
+            raise ValueError("Error importing matplotlib_venn. Is it installed? If not, install it using: pip install matplotlib-venn")
 
         # get the two bacteria groups
         if bacteria_groups is None:
@@ -1058,8 +1177,12 @@ class DBBact(Database):
         -------
         BytesIO file with the image
         '''
-        from wordcloud import WordCloud
         import matplotlib.pyplot as plt
+        try:
+            from wordcloud import WordCloud
+        except Exception as err:
+            print(err)
+            raise ValueError("Error importing wordcloud module. Is it installed? If not, install it using: pip install git+git://github.com/amueller/word_cloud.git")
 
         # get the annotations
         if exp is not None:

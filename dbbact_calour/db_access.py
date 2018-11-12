@@ -1344,7 +1344,14 @@ class DBAccess():
         -------
         numpy 2d array
             with annotatios (containing the term) (columns) x features (rows)
-            value at each position is 1 if this feature has this annotation or 0 if not
+            value at each position is >0 if this feature has this annotation or 0 if not
+            the number indicates the annotation type for the detail:
+            4 - common
+            8 - high freq.
+            5 - all (in diffexp annotations)
+            2 - low (in diffexp annotations)
+            16 - high (in diffexp annotations)
+            32 - other annotation type
         pandas dataframe
             one row per annotation
         pandas dataframe
@@ -1425,45 +1432,87 @@ class DBAccess():
                 logger.warn('failed for term %s' % cterm)
         return term_dist
 
-    def get_db_term_features(self, term):
+    def get_db_term_features(self, terms, ignore_exp=[]):
         '''Get all the features associated with a term in the database
 
         Parameters
         ----------
-        term : str
-            The term to look for in the database
+        terms : str or list of str
+            The term to look for in the database. if list of str, look for annotations containing all terms
+        ignore_exp: list of int, optional
+            list of experiment ids to ignore when looking for the features
 
         Returns
         -------
         dict of {feature: num} {str: int}. Key is feature (sequence), value is number of annotations containing this feature for this term.
         '''
         rdata = {}
-        rdata['term'] = term
+        # convert to list if single term
+        if isinstance(terms, str):
+            terms = [terms]
+
+        rdata['term'] = terms
         res = self._get('ontology/get_annotations', rdata, param_json=False)
         if res.status_code != 200:
-            logger.warn('error getting annotations for term %s' % term)
+            logger.warn('error getting annotations for term %s' % terms)
             return []
         res = res.json()
         annotations = res.get('annotations')
-        logger.info('found %d annotations with the term %s' % (len(annotations), term))
+        logger.info('found %d annotations with the term %s' % (len(annotations), terms))
 
+        # get features only for annotations which don't contain "lower in " for one of the terms
+        terms_set = set(terms)
         feature_num = defaultdict(int)
         for cannotation in annotations:
-            foundit = False
+            # if annotation is from an experiment we are ignoring, skip it
+            if cannotation['expid'] in ignore_exp:
+                continue
+            foundit = set()
             for cdetail in cannotation['details']:
-                if cdetail[1] != term:
+                if cdetail[1] not in terms_set:
                     continue
                 if cdetail[0] == 'low':
                     logger.info('annotation %d is low' % cannotation['annotationid'])
                     continue
-                foundit = True
-                break
-            if not foundit:
+                foundit.add(cdetail[1])
+                if len(foundit) >= len(terms):
+                    break
+            if len(foundit) < len(terms):
                 continue
+            # get the sequences for the annotation
             seqs = self.get_annotation_sequences(cannotation['annotationid'])
             for cseq in seqs:
                 feature_num[cseq] += 1
         return feature_num
+
+    def get_sequences_ids(self, sequences, no_shorter=False, no_longer=False):
+        '''Get the dbbact IDs for a list of ACGT sequences
+
+        Parameters
+        ----------
+        sequences: list of str
+            the ACGT sequences to get ids for
+        no_shorter: bool, optional
+            True to not get sequences shorter than the query sequence (but match 100%)
+        no_longer: bool, optional
+            True to not get sequences that are longer than the query sequence (but match 100%)
+
+        Returns
+        -------
+        list of list of int
+            List of dbbact sequence ids matching each query sequence
+        '''
+        rdata = {}
+        rdata['no_shorter'] = no_shorter
+        rdata['no_longer'] = no_longer
+        rdata['sequences'] = sequences
+        res = self._get('sequences/getid_list', rdata)
+        if res.status_code != 200:
+            logger.warn('error getting sequenceids for %d sequences' % len(sequences))
+            return []
+        res = res.json()
+        seqids = res.get('seqIds')
+        return seqids
 
     def get_annotation_sequences(self, annotationid):
         '''Get all sequence ids associated with an annotation
