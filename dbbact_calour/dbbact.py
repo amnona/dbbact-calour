@@ -209,7 +209,7 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single')):
+    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), **kwargs):
         '''Get dict of terms scores per feature
 
         Parameters
@@ -231,6 +231,9 @@ class DBBact(Database):
             the methods to get all the terms for each feature. can include:
                 'singe': get the single terms per each feature (i.e. 'feces', '-control', etc.)
                 'pairs': get the term pairs for each feature (i.e. 'feces+homo sapiens', etc.)
+        kwargs:
+            Parameters to pass to db_access.get_seq_list_fast_annotations. can include:
+            get_taxonomy=False, get_parents=False, get_term_info=True
 
         Returns
         -------
@@ -249,7 +252,7 @@ class DBBact(Database):
             annotations = exp.exp_metadata['__dbbact_annotations']
             term_info = exp.exp_metadata['__dbbact_term_info']
         else:
-            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features)
+            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, **kwargs)
 
         # get the current experimentID to ignore if ignore_exp is True
         if ignore_exp is True:
@@ -515,6 +518,75 @@ class DBBact(Database):
         kwargs['ignore_exp'] = ignore_exp
 
         res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.exp_metadata['__dbbact_annotations'], seq_annotations=exp.exp_metadata['__dbbact_sequence_annotations'], **kwargs)
+        return res
+
+    def enrichmentcount(self, exp, features, **kwargs):
+        '''DEPRACATED!!!!!!!
+        Get the list of enriched terms in features compared to all features in exp.
+
+        given uneven distribtion of number of terms per feature
+
+        Parameters
+        ----------
+        exp : calour.Experiment
+            The experiment to compare the features to
+        features : list of str
+            The features (from exp) to test for enrichmnt
+        term_type : str or None (optional)
+            The type of annotation data to test for enrichment
+            options are:
+            'term' - ontology terms associated with each feature.
+            'parentterm' - ontology terms including parent terms associated with each feature.
+            'annotation' - the full annotation strings associated with each feature
+            'combined' - combine 'term' and 'annotation'
+        ignore_exp: list of int or None or True(optional)
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment
+            None (default) to use annotations from all experiments including the current one
+        min_appearances : int (optional)
+            The minimal number of times a term appears in order to include in output list.
+        fdr_method : str (optional)
+            The FDR method used for detecting enriched terms (permutation test). options are:
+            'dsfdr' (default): use the discrete FDR correction
+            'bhfdr': use Benjamini Hochbert FDR correction
+        score_method : str (optional)
+            The score method used for calculating the term score. Options are:
+            'all_mean' (default): mean over each experiment of all annotations containing the term
+            'sum' : sum of all annotations (experiment not taken into account)
+            'card_mean': use a null model keeping the number of annotations per each bacteria
+        random_seed: int or None
+            int to specify the random seed for numpy.random.
+        use_term_pairs: bool, optional
+            True to also test enrichment in pairs of terms (i.e. homo sapiens+feces, etc.)
+
+        Returns
+        -------
+        count
+        '''
+        exp_features = set(exp.feature_metadata.index.values)
+        bad_features = set(features).difference(exp_features)
+        if len(bad_features) > 0:
+            logger.warning('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            features = list(set(features).intersection(exp_features))
+            if len(features) == 0:
+                raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
+        bg_features = np.array(list(exp_features.difference(features)))
+
+        # add all annotations to experiment if not already added
+        if '__dbbact_sequence_terms' not in exp.exp_metadata:
+            self.add_all_annotations_to_exp(exp)
+
+        ignore_exp = kwargs.get('ignore_exp')
+        # if ignore exp is True, it means we should ignore the current experiment
+        if ignore_exp is True:
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
+        kwargs['ignore_exp'] = ignore_exp
+
+        res = self.db.get_term_enriched_annotations(g1_features=features, g2_features=bg_features, all_annotations=exp.exp_metadata['__dbbact_annotations'], seq_annotations=exp.exp_metadata['__dbbact_sequence_annotations'], **kwargs)
         return res
 
     def get_terms_exp(self, exp, term):
@@ -840,6 +912,7 @@ class DBBact(Database):
             ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                ignore_exp = []
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
@@ -1047,7 +1120,7 @@ class DBBact(Database):
             num_group1 : number of total terms in group 1 which are the specific term (float)
             num_group2 : number of total terms in group 2 which are the specific term (float)
             description : the term (str)
-    numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
+        numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
             for term in feature
         pandas.DataFrame with info about the features used. columns:
             group: int the group (1/2) to which the feature belongs
@@ -1135,7 +1208,7 @@ class DBBact(Database):
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
-    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None):
+    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False):
         '''Draw a word_cloud for a given set of sequences
 
         Parameters
@@ -1151,31 +1224,17 @@ class DBBact(Database):
             'recall': sizes are based on the recall (fraction of dbbact term containing annotations that contain the sequences)
             'precision': sizes are based on the precision (fraction of sequence annotations of the experiment sequences that contain the term)
             'fscore': a combination of recall and precition (r*p / (r+p))
+        width, height: int, optional
+            The width and heigh of the figure (high values are slower but nicer resolution for publication)
+            If inside a jupyter notebook, use savefig(f, dpi=600)
+        freq_weighted: bool, optional
+            Onlywhen supplying exp
+            True to weight each bacteria by it's mean frequency in exp.data
+            NOT IMPLEMENTED YET!!!
 
         Returns
         -------
         matplotlib.figure
-        '''
-    # def draw_cloud(fscores, recall={}, precision={}, term_count={}):
-        '''
-        Draw a wordcloud for a list of terms
-
-        Parameters
-        ----------
-        fscores: dict of {term (str): fscore(float)}
-            the f-score for each term (determines the size)
-        recall : dict of {term (str): recall(float)}
-            the recall score for each term (determines the green color)
-        precision : dict of {term (str): precision(float)}
-            the precision score for each term (determines the blue color)
-        term_count: dict of {term (str): number of experiments where the term was observed(int)}
-            The number of unique experiments where the term annotations are coming from
-        local_save_name : str or None (optional)
-            if str, save also as pdf to local file local_save_name (for MS figures) in high res
-
-        Returns
-        -------
-        BytesIO file with the image
         '''
         import matplotlib.pyplot as plt
         try:
@@ -1226,6 +1285,12 @@ class DBBact(Database):
         else:
             raise ValueError('term_type %s not recognized. options are: fscore, recall, precision')
 
+        # weight by data frequency if needed
+        if freq_weighted:
+            new_score = defaultdict(float)
+            for cseq in sequence_annotations:
+                pass
+
         # normalize the fractions to a scale max=1
         new_scores = {}
         if score is not None:
@@ -1235,7 +1300,7 @@ class DBBact(Database):
                 new_scores[ckey] = score[ckey] / maxval
         score = new_scores
 
-        wc = WordCloud(background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
+        wc = WordCloud(width=width, height=height, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
         # wc = WordCloud(width=400 * 3, height=200 * 3, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
         # else:
         #     wc = WordCloud(background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
@@ -1277,16 +1342,17 @@ def _get_color(word, font_size, position, orientation, font_path, random_state, 
     str: the color in hex "0#RRGGBB"
     '''
     import matplotlib as mpl
-    cmap = mpl.cm.get_cmap('bwr')
     if word in term_count:
         count = min(term_count[word], 10)
     else:
         count = 10
 
     if word[0] == '-':
-        rgba = cmap(float(0.5 + 0.25 + count / 40), bytes=True)
+        cmap = mpl.cm.get_cmap('Oranges')
+        rgba = cmap(float(0.7 + count / 40), bytes=True)
     else:
-        rgba = cmap(float(0.5 - 0.25 - count / 40), bytes=True)
+        cmap = mpl.cm.get_cmap('Purples')
+        rgba = cmap(float(0.6 + count / 40), bytes=True)
 
     red = format(rgba[0], '02x')
     green = format(rgba[1], '02x')

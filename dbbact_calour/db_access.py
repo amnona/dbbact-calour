@@ -366,7 +366,7 @@ class DBAccess():
         ----------
         annotations : list of dict
             list of annotations where the feature is present
-        dict of {expid:int : dict of {term:str : total:int}}
+        exp_annotations: dict of {expid:int : dict of {term:str : total:int}}
             from self._get_exp_annotations()
         score_method: str (optional)
                 The method to use for score calculation:
@@ -699,13 +699,19 @@ class DBAccess():
         logger.debug(res.content)
         return None
 
-    def get_seq_list_fast_annotations(self, sequences):
+    def get_seq_list_fast_annotations(self, sequences, get_taxonomy=False, get_parents=False, get_term_info=True):
         '''Get annotations for all sequences in list using compact format and with parent ontology terms
 
         Params
         ------
         sequences : list of str
             The list of DNA sequences to get the annotations for
+        get_taxonomy: bool, optional
+            True to get taxonomy info for each sequence using the dbbact assigned taxonomy (supplied in the 'taxonomy' dict)
+        get_parents: bool, optional
+            True to get all ontology parents for each annotation term.
+        get_term_info: bool, optional
+            True to get total annotation/experiments for each term appearing in the annotations
 
         Returns
         -------
@@ -727,9 +733,9 @@ class DBAccess():
         logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
         rdata = {}
         rdata['sequences'] = list(sequences)
-        rdata['get_term_info'] = True
-        rdata['get_taxonomy'] = False
-        rdata['get_parents'] = False
+        rdata['get_term_info'] = get_term_info
+        rdata['get_taxonomy'] = get_taxonomy
+        rdata['get_parents'] = get_parents
         rdata['get_all_exp_annotations'] = False
         res = self._get('sequences/get_fast_annotations', rdata)
         if res.status_code != 200:
@@ -773,6 +779,8 @@ class DBAccess():
             if len(res['taxonomy']) > 0:
                 for idx, cseq in enumerate(sequences):
                     taxdict[cseq] = res['taxonomy'][idx]
+        if 'term_info' not in res:
+            res['term_info'] = {}
 
         return sequence_terms, sequence_annotations, res['annotations'], res['term_info'], taxdict
 
@@ -1070,7 +1078,6 @@ class DBAccess():
             'sigterm' - count number of significant experiments with the term
         ignore_exp: list of int or None or True(optional)
             List of experiments to ignore in the analysis
-            True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
         min_appearances : int (optional)
             The minimal number of times a term appears in order to include in output list.
@@ -1093,7 +1100,6 @@ class DBAccess():
             the minimal number of experiments a term appears in in order to include in results (default = 1 so all are shown)
         add_single_exp_warning: bool, optional
             True to add a warning to terms present in one experiment, False to not add this warning
-
 
         Returns
         -------
@@ -1121,23 +1127,27 @@ class DBAccess():
         g2_features = np.array(g2_features)
         exp_features = np.hstack([g1_features, g2_features])
 
+        # Get the feature_terms dict according to the scoring method
+        # dict of {feature:str, list of tuples of (term:str, score:float)}, key is feature, value is list of (term, score)
         if term_type == 'term':
+            # score for each term
             feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'parentterm':
+            # score for each term including the parent terms (based on the ontology structure) for each term
             pass
         elif term_type == 'annotation':
+            # score for each annotation
             feature_terms = self._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
-
-            # each annotation by definition is in one experiment
+            # each annotation by definition is in one experiment, so no need to warn about single annotation :)
             add_single_exp_warning = False
         elif term_type == 'combined':
+            # score is for each term or annotation
             feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
             feature_annotations = self._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
             for cfeature, cvals in feature_annotations.items():
                 if cfeature not in feature_terms:
                     feature_terms[cfeature] = []
                 feature_terms[cfeature].extend(cvals)
-
             # each annotation by definition is in one experiment
             add_single_exp_warning = False
         elif term_type == 'sigterm':
@@ -1146,7 +1156,6 @@ class DBAccess():
             feature_terms = {}
             for cseq, cannotations in seq_annotations.items():
                 feature_terms[cseq] = [(str(x), 1) for x in cannotations]
-
             # each annotation by definition is in one experiment
             add_single_exp_warning = False
         else:
@@ -1197,6 +1206,7 @@ class DBAccess():
         labels = np.zeros(all_feature_array.shape[1])
         labels[:feature_array.shape[1]] = 1
 
+        # find which terms are significantly enriched in either of the two feature groups
         keep, odif, pvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
         keep = np.where(keep)[0]
         if len(keep) == 0:
@@ -1243,8 +1253,36 @@ class DBAccess():
         features = pd.DataFrame({'sequence': features, 'group': labels}, index=features)
         return res, all_feature_array, features
 
+    def _get_term_enriched_annotations(self, g1_features, g2_features, all_annotations, seq_annotations, ignore_exp=None, **kwargs):
+        '''DEPRACATED!!!!!
+        Get a list of enriched annotations for each term
+        Parameters
+        ----------
+
+        Returns
+        -------
+        enriched_annotations: dict of {annotationid(int): enriched(bool)}
+        '''
+        # get a dict with keys all experiment ids from the annotations
+        all_exps = self._get_exp_annotations(all_annotations)
+
+        # the number of experiments where each term was enriched (key is the term, value is the count of experiments)
+        exp_term_count = defaultdict(int)
+        for cexpid in all_exps.keys():
+            # create the new ignore list for all experiments except the one we are processing
+            exclude_exps = set(all_exps.keys())
+            if cexpid in exclude_exps:
+                exclude_exps.remove(cexpid)
+            if ignore_exp is not None:
+                exclude_exps = exclude_exps.union(set(ignore_exp))
+            sterms, ftscore, sfeatures = self.term_enrichment(g1_features, g2_features, all_annotations, seq_annotations, ignore_exp=list(exclude_exps), **kwargs)
+            for cterm in sterms.index.values:
+                exp_term_count[cterm] += 1
+        return exp_term_count
+
     def _get_term_features2(self, features, feature_terms):
-        '''Get dict of number of appearances in each sequence keyed by term.
+        '''DEPRACATED!!!!!!
+        Get dict of number of appearances in each sequence keyed by term.
         This function inflates each bacteria to the total number of annotations it has.
         So it can be used for the randomizing annotation count null hypothesis model
 
@@ -1624,3 +1662,57 @@ class DBAccess():
         common = len(set(term1_f.keys()).intersection(set(term2_f.keys())))
         cscore = common / (len(term1_f) + len(term2_f))
         print('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
+
+    def count_enriched_exps(self, term, g1features, g2features, seq_annotations, annotations, **kwargs):
+        '''Get experiments with enriched term annotations for a given term.
+
+        Parameters
+        ----------
+        term: str
+            the term to look for enriched annotations
+        g1features, g2features: list of str
+            list of bacterial sequences  for the two groups to test enrichment between
+        seq_annotations: dict of {feature(str): list of annotationids (int)}
+        annotations: dict of {annotationsid(int): }
+        **kwargs:
+            parameters for dsfdr. can include:
+            method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method
+
+        Returns
+        -------
+        enriched_experiments: dict of {expid(int): num of enriched annotations(int)}
+        enriched_annotations: list of [annotationids(int)]
+        total_exp_annotations: dict of {expid(int): num of annotations with term(int)}
+        '''
+
+        # get all annotations matrix for the term
+        all_seqs = list(g1features) + list(g2features)
+        tmat, tanno, tseqs = self.get_term_annotations(term, all_seqs, seq_annotations, annotations)
+
+        labels = np.zeros(len(all_seqs))
+        labels[:len(g1features)] = 1
+
+        # find which terms are significantntly enriched in either of the two feature groups
+        keep, odif, pvals = dsfdr(tmat.T, labels, **kwargs)
+
+        # count enriched experiments
+        enriched_experiments = defaultdict(int)
+        total_exp_annotations = defaultdict(int)
+        enriched_annotations = []
+        for cpos, ckeep in enumerate(keep):
+            cexp = tanno.iloc[cpos]['expid']
+            canno = tanno.iloc[cpos]['annotationid']
+            total_exp_annotations[cexp] += 1
+            if ckeep:
+                enriched_experiments[cexp] += 1
+                enriched_annotations.append(canno)
+
+        keep = np.where(keep)[0]
+        if len(keep) == 0:
+            logger.info('no enriched terms found')
+            return 0
+        logger.debug('Found %d enriched annotations for term %s' % (len(keep), term))
+
+        print(enriched_experiments)
+        print(total_exp_annotations)
+        return enriched_experiments, enriched_annotations, total_exp_annotations
