@@ -1211,7 +1211,7 @@ class DBAccess():
                     ccterm = '%s *' % (ccterm)
             new_term_list.append(ccterm)
         term_list = new_term_list
-        logger.info('removed %d terms' % num_removed)
+        logger.debug('removed %d terms' % num_removed)
 
         labels = np.zeros(all_feature_array.shape[1])
         labels[:feature_array.shape[1]] = 1
@@ -1261,8 +1261,8 @@ class DBAccess():
         all_feature_array = all_feature_array[:, si]
 
         # get the per-term enriched experiments count if needed
-        num_enriched_exps = np.zeros(len(term_list))
-        num_total_exps = np.zeros(len(term_list))
+        num_enriched_exps = np.zeros(len(term_list)) - 1
+        num_total_exps = np.zeros(len(term_list)) - 1
         if min_appearances > 0:
             keep_min_exps = []
             g1featurelist = list(g1_features)
@@ -1327,6 +1327,10 @@ class DBAccess():
             all_feature_array = all_feature_array[:, si]
             num_enriched_exps = np.array(num_enriched_exps)[si]
             num_total_exps = np.array(num_total_exps)[si]
+
+            # add the number of enriched experiments to each term string
+            for idx, cterm in enumerate(term_list):
+                term_list[idx] = term_list[idx] + ' [%d/%d]' % (num_enriched_exps[idx], num_total_exps[idx])
 
         res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
         features = list(g1_features)
@@ -1770,7 +1774,10 @@ class DBAccess():
         # get rid of lower in, since it means higer in the other group????
         # TODO: FIX THIS!!!!!
         if term[0] == '-':
+            lower = True
             term = term[1:]
+        else:
+            lower = False
 
         if ignore_exp is None:
             ignore_exp = []
@@ -1795,6 +1802,17 @@ class DBAccess():
             if cexp in ignore_exp:
                 continue
             canno = tanno.iloc[cpos]['annotationid']
+            # if we look at LOWER IN annotations, only count annotations where it really appears LOWER IN
+            if lower:
+                if annotations[canno]['annotationtype'] != 'diffexp':
+                    continue
+                islower = False
+                for cdet in annotations[canno]['details']:
+                    if cdet[0] == 'low':
+                        islower = True
+                        break
+                if not islower:
+                    continue
             total_exp_annotations[cexp] += 1
             if ckeep:
                 enriched_experiments[cexp] += 1
