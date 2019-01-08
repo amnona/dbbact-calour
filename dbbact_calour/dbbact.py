@@ -517,7 +517,7 @@ class DBBact(Database):
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
 
-        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.exp_metadata['__dbbact_annotations'], seq_annotations=exp.exp_metadata['__dbbact_sequence_annotations'], **kwargs)
+        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.exp_metadata['__dbbact_annotations'], seq_annotations=exp.exp_metadata['__dbbact_sequence_annotations'], term_info=exp.exp_metadata.get('__dbbact_term_info'), **kwargs)
         return res
 
     def enrichmentcount(self, exp, features, **kwargs):

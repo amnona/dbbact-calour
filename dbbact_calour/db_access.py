@@ -1054,7 +1054,7 @@ class DBAccess():
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
-    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_type='term', ignore_exp=None, min_appearances=0, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0):
+    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1068,6 +1068,8 @@ class DBAccess():
             dict of {annotationid (int): annotation (dict)}
             all annotations for the features (from get_annotations_compact)
         seq_annotations: dict of {sequence (str): annnotationids (list of int)}
+        term_info: dict of {term(str):info(dict)} or None, optional
+            Not none to enable total experiment count for each term (returned in the 'num_total_exps' field in first returned pandas dataframe)
         term_type : str or None (optional)
             The type of annotation data to test for enrichment
             options are:
@@ -1287,7 +1289,11 @@ class DBAccess():
                 enriched_exps, enriched_annotations, total_exp_annotations = self.count_enriched_exps(cterm, g1featurelist, g2featurelist, seq_annotations, all_annotations, ignore_exp=ignore_exp)
                 if len(enriched_exps) >= min_appearances:
                     num_enriched_exps.append(len(enriched_exps))
-                    num_total_exps.append(len(total_exp_annotations))
+                    if term_info is not None:
+                        num_total_exps.append(term_info[cterm]['total_experiments'])
+                    else:
+                        num_total_exps.append(-1)
+                    # num_total_exps.append(len(total_exp_annotations))
                     keep_min_exps.append(cidx)
                     num_found += 1
                     if num_found >= num_results_needed:
@@ -1329,8 +1335,8 @@ class DBAccess():
             num_total_exps = np.array(num_total_exps)[si]
 
             # add the number of enriched experiments to each term string
-            for idx, cterm in enumerate(term_list):
-                term_list[idx] = term_list[idx] + ' [%d/%d]' % (num_enriched_exps[idx], num_total_exps[idx])
+            # for idx, cterm in enumerate(term_list):
+            #     term_list[idx] = term_list[idx] + ' [%d/%d]' % (num_enriched_exps[idx], num_total_exps[idx])
 
         res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
         features = list(g1_features)
@@ -1809,8 +1815,9 @@ class DBAccess():
                 islower = False
                 for cdet in annotations[canno]['details']:
                     if cdet[0] == 'low':
-                        islower = True
-                        break
+                        if cdet[1] == term:
+                            islower = True
+                            break
                 if not islower:
                     continue
             total_exp_annotations[cexp] += 1
