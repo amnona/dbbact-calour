@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Add to manual database</string>
+   <string>Add annotation to dbBact</string>
   </property>
   <widget class="QDialogButtonBox" name="buttonBox">
    <property name="geometry">

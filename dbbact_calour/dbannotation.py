@@ -208,7 +208,7 @@ def update_annotation_gui(db, annotation, exp):
 
         # store the history
         global history
-        history[exp.exp_metadata['data_md5']] = {'annotations': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        history[exp.exp_metadata['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
         return ''
     return 'Update annotation cancelled'
 
@@ -569,6 +569,28 @@ class DBAnnotateSave(QtWidgets.QDialog):
             self.bdescription.setText(annotation['description'])
         if 'method' in annotation:
             self.bmethod.setText(annotation['method'])
+        # activate the appropriate annotation type buttons
+        if 'annotationtype' in annotation:
+            atype = annotation['annotationtype'].lower()
+            if atype == 'common':
+                ctypeidx = self.bisatype.findText('Common', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'highfreq':
+                ctypeidx = self.bisatype.findText('high', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'other':
+                ctypeidx = self.bisatype.findText('other', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'diffexp':
+                self.bdiffpres.setChecked(True)
+                pass
+            elif atype == 'contamination':
+                ctypeidx = self.bisatype.findText('contam', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
 
     def radiotoggle(self):
         if self.bisa.isChecked():
