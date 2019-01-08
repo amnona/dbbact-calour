@@ -435,7 +435,6 @@ class DBBact(Database):
             empty if ok, otherwise the error encountered
         '''
         from . import dbannotation
-        print(annotation)
         dbannotation.update_annotation_gui(self.db, annotation, exp)
 
     def enrichment(self, exp, features, **kwargs):
