@@ -129,6 +129,22 @@ class DBAccess():
             logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
         return res
 
+    def get_primers(self):
+        '''Get a list of all the primers available in the database
+
+        Returns
+        -------
+        list of dict of {'primerid': int
+                    dbbact internal id of the primer region (i.e. 1 for v4, etc.)
+                'name': str,
+                    name of the primer region (i.e. 'v4', 'its1', etc.)
+                'fprimer': str
+                'rprimer: str
+                    name of the forward and reverse primers for the region (i.e. 515f, etc.)}
+        '''
+        res = self._get('sequences/get_primers', rdata={})
+        return res.json()['primers']
+
     def get_seq_annotations(self, sequence):
         '''Get the annotations for a sequence
 

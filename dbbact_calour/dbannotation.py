@@ -5,7 +5,8 @@ import sys
 
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QListWidget, QDialogButtonBox
+
 import pandas as pd
 from calour.util import get_config_value, set_config_value, get_config_file
 
@@ -94,12 +95,13 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
                  'also, please supply as many terms as possible (host, material, country, disease, etc.)',
                  keyval='annotation_info')
 
-    ui = DBAnnotateSave(seqs, exp)
+    ui = DBAnnotateSave(seqs, exp, dbclass=dbclass)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
         description = str(ui.bdescription.text())
         # TODO: need to get primer region!!!!
-        primerid = 'V4'
+        primerid = ui.primerid
+        # primerid = 'V4'
         method = str(ui.bmethod.text())
         if method == '':
             method = 'na'
@@ -161,9 +163,10 @@ def update_annotation_gui(db, annotation, exp):
     annotationid = annotation['annotationid']
     primerid = annotation.get('primerid')
 
-    ui = DBAnnotateSave([], exp, prefill_annotation=annotation)
+    ui = DBAnnotateSave([], exp, prefill_annotation=annotation, dbclass=db)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
+        primerid = ui.primerid
         description = str(ui.bdescription.text())
         method = str(ui.bmethod.text())
         if method == '':
@@ -424,7 +427,7 @@ class DBStudyInfo(QtWidgets.QDialog):
             if cdata['type'].lower() == 'name':
                 name_found = True
             allstudydata.append((cdata['type'], cdata['value']))
-            if cdata['fromdb'] == False:
+            if cdata['fromdb'] is False:
                 newstudydata.append((cdata['type'], cdata['value']))
         # validate we have something else than the md5 for data/map
         if len(allstudydata) <= 2:
@@ -452,7 +455,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
     # used to store the ontology values for the autocomplete
     _ontology_dict = None
 
-    def __init__(self, selected_features, expdat, prefill_annotation=None):
+    def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None):
         '''Create the manual annotation window
 
         Parameters
@@ -464,6 +467,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
         prefill_annotation : dict or None (optional)
             None (default) to prefill from history
             dict to pre-fill using dict fields instead
+        dbclass: dbbact or None, optional
+            the dbBact database to interact with (used to get the primer regions possible)
+
         '''
         super(DBAnnotateSave, self).__init__()
 
@@ -477,6 +483,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.bdiffpres.toggled.connect(self.radiotoggle)
         self.bisatype.currentIndexChanged.connect(self.isatypechanged)
         # self.bhistory.clicked.connect(self.history)
+        # set the primer region button
+        if dbclass:
+            self.bhistory.clicked.connect(lambda: self.select_primers(dbclass))
         self.cexp = expdat
         self.lnumbact.setText(str(len(selected_features)))
         completer = QtWidgets.QCompleter()
@@ -496,6 +505,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
         self.setWindowTitle(expdat.description)
 
+        # set the default primer id for the annotation sequences
+        self.primerid = 'V4'
+
         if prefill_annotation is None:
             # try to autofill from history if experiment annotated
             global history
@@ -506,6 +518,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
         else:
             logger.debug('Filling annotation details from supplied annotation')
             self.fill_from_annotation(prefill_annotation, onlyall=False)
+
+        # set the primer region button label to the region
+        self.bhistory.setText(self.primerid)
 
         # self.prefillinfo()
         self.bontoinput.setFocus()
@@ -569,6 +584,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
             self.bdescription.setText(annotation['description'])
         if 'method' in annotation:
             self.bmethod.setText(annotation['method'])
+        if 'primerid' in annotation:
+            self.primerid = annotation['primerid']
         # activate the appropriate annotation type buttons
         if 'annotationtype' in annotation:
             atype = annotation['annotationtype'].lower()
@@ -605,6 +622,20 @@ class DBAnnotateSave(QtWidgets.QDialog):
         changed the selection of isatype combobox so need to activate the isa radio button
         """
         self.bisa.setChecked(True)
+
+    def select_primers(self, dbclass=None):
+        primer_info = dbclass.db.get_primers()
+        primers = ['%s (%s-%s)' % (cpi['name'], cpi['fprimer'], cpi['rprimer']) for cpi in primer_info]
+        listwin = SListWindow(primers, listname='Select region')
+        res = listwin.exec_()
+        if res == QtWidgets.QDialog.Accepted:
+            # pos = listwin.get_selected()
+            pos = listwin.selected_pos
+            cprime = primer_info[pos]['name']
+            # set the primer region name on the button
+            self.bhistory.setText(cprime)
+            self.primerid = cprime
+        return None
 
     def studyinfo(self):
         study_data_ui(self.cexp)
@@ -870,3 +901,81 @@ def show_and_ask(msg, keyval):
     a.exec_()
     if cb.isChecked():
         set_config_value(keyval, 'yes', section='dbbact')
+
+
+class SListWindow(QtWidgets.QDialog):
+    def __init__(self, listdata=[], listname=None):
+        '''Create a list window with items in the list and the listname as specified
+
+        Parameters
+        ----------
+        listdata: list of str, optional
+            the data to show in the list
+        listname: str, optional
+            name to display above the list
+        '''
+        super().__init__()
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        if listname is not None:
+            self.setWindowTitle(listname)
+
+        self.layout = QVBoxLayout(self)
+
+        self.w_list = QListWidget()
+        self.layout.addWidget(self.w_list)
+        self.selected_pos = None
+
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox.accepted.connect(self.accept_get_pos)
+        # buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        self.layout.addWidget(buttonBox)
+
+        for citem in listdata:
+            self.w_list.addItem(citem)
+
+        self.w_list.itemDoubleClicked.connect(self.list_double_click)
+
+        self.show()
+        self.adjustSize()
+
+    def accept_get_pos(self):
+        self.selected_pos = self.get_selected()
+        self.accept()
+
+    def add_item(self, text, color='black', dblclick_data=None):
+        '''Add an item to the list
+
+        Parameters
+        ----------
+        text : str
+            the string to add
+        color : str, optional
+            the color of the text to add
+        dblclick_function : function or None
+            the function to call when this item is double clicked (or None to ignore)
+        '''
+        item = QtWidgets.QListWidgetItem()
+        item.setText(text)
+        if color == 'black':
+            ccolor = QtGui.QColor(0, 0, 0)
+        elif color == 'red':
+            ccolor = QtGui.QColor(155, 0, 0)
+        elif color == 'blue':
+            ccolor = QtGui.QColor(0, 0, 155)
+        elif color == 'green':
+            ccolor = QtGui.QColor(0, 155, 0)
+        item.setForeground(ccolor)
+        item.setData(QtCore.Qt.UserRole, dblclick_data)
+        self.w_list.addItem(item)
+
+    def list_double_click(self, item):
+        data = item.data(QtCore.Qt.UserRole)
+        if data is not None:
+            data['database'].show_term_details(data['term'], data['exp'], data['features1'], data['features2'], gui='qt5')
+
+    def get_selected(self):
+        items = self.w_list.selectedItems()
+        for citem in items:
+            spos = self.w_list.row(citem)
+        return spos
