@@ -2,6 +2,7 @@ from logging import getLogger
 from pkg_resources import resource_filename
 import pickle
 import sys
+import os.path
 
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtCore import Qt
@@ -322,7 +323,7 @@ def study_data_ui(cexp):
         for citem in qtlistiteritems(dbsi.blist):
             cdata = qtlistgetdata(citem)
             allstudydata.append((cdata['type'], cdata['value']))
-            if cdata['fromdb'] == False:
+            if cdata['fromdb'] is False:
                 newstudydata.append((cdata['type'], cdata['value']))
 
         if len(allstudydata) <= 2:
@@ -360,7 +361,7 @@ class DBStudyInfo(QtWidgets.QDialog):
         if experimentid is not None:
             info = bdb.get_experiment_info(experimentid)
             for cinfo in info:
-                qtlistadd(self.blist, cinfo[0]+':'+cinfo[1], {'fromdb': True, 'type': cinfo[0], 'value': cinfo[1]}, color='grey')
+                qtlistadd(self.blist, cinfo[0] + ':' + cinfo[1], {'fromdb': True, 'type': cinfo[0], 'value': cinfo[1]}, color='grey')
         else:
             # if not in database, get details from map file
             # the supplied details (supplied to the init function via exp_details)
@@ -454,6 +455,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
     # Attributes:
     # used to store the ontology values for the autocomplete
     _ontology_dict = None
+    # used to store the dbbact (user) ontology terms
+    _ontology_dbbact = None
+    _ontology_dbbact_max_id = 0
 
     def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None):
         '''Create the manual annotation window
@@ -482,16 +486,17 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.bisa.toggled.connect(self.radiotoggle)
         self.bdiffpres.toggled.connect(self.radiotoggle)
         self.bisatype.currentIndexChanged.connect(self.isatypechanged)
-        # self.bhistory.clicked.connect(self.history)
+
         # set the primer region button
         if dbclass:
             self.bhistory.clicked.connect(lambda: self.select_primers(dbclass))
+
         self.cexp = expdat
         self.lnumbact.setText(str(len(selected_features)))
-        completer = QtWidgets.QCompleter()
-        self.bontoinput.setCompleter(completer)
 
         # create the autocomplete ontology list
+        completer = QtWidgets.QCompleter()
+        self.bontoinput.setCompleter(completer)
         model = QtCore.QStringListModel()
         completer.setModel(model)
         # completer.setCompletionMode(QCompleter.InlineCompletion)
@@ -500,7 +505,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         # make the completer selection also erase the text edit
         completer.activated.connect(self.cleartext, type=Qt.QueuedConnection)
         # init the ontology values
-        self._load_ontologies()
+        self._load_ontologies(dbclass)
         model.setStringList(self._ontology_sorted_list)
 
         self.setWindowTitle(expdat.description)
@@ -526,7 +531,27 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.bontoinput.setFocus()
         self.show()
 
-    def _load_ontologies(self):
+    def _load_ontologies(self, dbclass=None):
+        '''Load the ontology term files from the local computer (for autocomplete). The data is stored locally in DBAnnotateSave._ontology_dict and DBAnnotateSave._ontology_from_id
+
+        The needed files are created by a script from ontology files and are:
+        data/ontology.pickle:
+        dict of {name(str): ontologyid(str)}
+            name:
+                contains the full term/sysnonim name + "(+"ONTOLOGY NAME+"original term + ")". This is the string displayed to the user
+            ontologyid:
+                contains a unique id for this term that appears in the data/ontologyfromid.pickle file (loaded to DBAnnotateSave._ontology_from_id).
+
+        data/ontologyfromid.pickle:
+        dict of {ontologyid(str): term(str)}
+            ontologyid:
+                contains a unique id for each of the terms (linked from data/ontologies.pickle or DBAnnotateSave._ontology_dict)
+            term:
+                the dbbact term name
+
+        For example for the term "united states of america" we have in DBAnnotateSave._ontology_dict key "U.S.A. :GAZ(United States of America)" with value GAZ:00002459
+        and in DBAnnotateSave._ontology_from_id we have key "GAZ:00002459" with value "United States of America"
+        '''
         if DBAnnotateSave._ontology_dict is None:
             print('loading')
             ontology_file = resource_filename(__package__, 'data/ontology.pickle')
@@ -534,10 +559,48 @@ class DBAnnotateSave(QtWidgets.QDialog):
             DBAnnotateSave._ontology_dict = ontology
             print('sorting')
             olist = list(DBAnnotateSave._ontology_dict.keys())
-            DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
+            DBAnnotateSave._ontology_sorted_list = olist
+            # DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
 
             ontology_from_id_file = resource_filename(__package__, 'data/ontologyfromid.pickle')
             DBAnnotateSave._ontology_from_id = pickle.load(open(ontology_from_id_file, 'rb'))
+
+        # get the dbbact ontology terms from the dbbact file (if exists) otherwise create
+        if DBAnnotateSave._ontology_dbbact is None:
+            user_ontology = {}
+            logger.debug('loading dbbact user ontology terms file')
+            user_ontology_file = resource_filename(__package__, 'data/user_ontology.pickle')
+            if os.path.isfile(user_ontology_file):
+                user_ontology = pickle.load(open(user_ontology_file, 'rb'))
+            else:
+                if dbclass is not None:
+                    logger.info('User ontology file %s does not exist. Creating...' % user_ontology_file)
+                    user_ontology = dbclass.db.get_ontology_terms()
+                    with open(user_ontology_file, 'wb') as ofl:
+                        pickle.dump(user_ontology, ofl)
+                        logger.info('Created user ontology file %s' % user_ontology_file)
+
+            DBAnnotateSave._ontology_dbbact = user_ontology
+            # get the maximal ontology termid (so sync is faster next time)
+            DBAnnotateSave._ontology_dbbact_max_id = user_ontology[max(user_ontology, key=user_ontology.get)]
+
+        # now add more ontology terms from the dbbact ontology
+        if dbclass is not None:
+            new_terms = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
+            if len(new_terms) > 0:
+                logger.debug('Got %d new dbbact user ontology terms' % len(new_terms))
+                DBAnnotateSave._ontology_dbbact_max_id = new_terms[max(new_terms, key=new_terms.get)]
+                DBAnnotateSave._ontology_dbbact.update(new_terms)
+                # save the updated terms list if we have enough new terms (don't want to save everything every time)
+                if len(new_terms) > 25:
+                    with open(user_ontology_file, 'wb') as ofl:
+                        pickle.dump(DBAnnotateSave._ontology_dbbact, ofl)
+
+        # update the terms sorted list with the user terms
+        all_term_list = DBAnnotateSave._ontology_sorted_list
+        if DBAnnotateSave._ontology_dbbact is not None:
+            all_term_list.extend(DBAnnotateSave._ontology_dbbact.keys())
+        DBAnnotateSave._ontology_sorted_list = sorted(all_term_list, key=lambda s: s.lower())
 
     # def history(self):
     #     curtext = []

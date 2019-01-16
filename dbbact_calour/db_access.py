@@ -1433,6 +1433,32 @@ class DBAccess():
         term_list = sorted(terms, key=terms.get)
         return res, term_list
 
+    def get_ontology_terms(self, min_term_id=None, ontologyid=1):
+        '''Get all the terms in an ontology, starting with termid min_term_id
+        By default it gets the terms for the dbbact ontology (i.e. all terms not in envo/gaz/etc.)
+
+        Parameters
+        ----------
+        min_term_id: int or None, optional
+            The minimal dbbact term id to get in the results (to make it faster)
+        ontologyid: int or None, optional
+            The ontologyid to get the results for (1 is dbbact ontology)
+            None to get all ontologies
+
+        Returns
+        -------
+        dict of {term(str): dbbact_id(int)}
+        '''
+        rdata = {'min_term_id': min_term_id, 'ontologyid': ontologyid}
+        res = self._get('ontology/get_all_terms', rdata)
+        if res.status_code != 200:
+            msg = 'Failed to get all ontology terms list. error %s' % res.content
+            logger.warn(msg)
+            return msg
+        terms = res.json()
+        logger.debug('got %d terms' % len(terms))
+        return terms
+
     def _get_term_features(self, features, feature_terms):
         '''Get dict of number of appearances in each sequence keyed by term
 
