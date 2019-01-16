@@ -2,10 +2,12 @@ from logging import getLogger
 from pkg_resources import resource_filename
 import pickle
 import sys
+import os.path
 
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QListWidget, QDialogButtonBox
+
 import pandas as pd
 from calour.util import get_config_value, set_config_value, get_config_file
 
@@ -94,12 +96,13 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
                  'also, please supply as many terms as possible (host, material, country, disease, etc.)',
                  keyval='annotation_info')
 
-    ui = DBAnnotateSave(seqs, exp)
+    ui = DBAnnotateSave(seqs, exp, dbclass=dbclass)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
         description = str(ui.bdescription.text())
         # TODO: need to get primer region!!!!
-        primerid = 'V4'
+        primerid = ui.primerid
+        # primerid = 'V4'
         method = str(ui.bmethod.text())
         if method == '':
             method = 'na'
@@ -161,9 +164,10 @@ def update_annotation_gui(db, annotation, exp):
     annotationid = annotation['annotationid']
     primerid = annotation.get('primerid')
 
-    ui = DBAnnotateSave([], exp, prefill_annotation=annotation)
+    ui = DBAnnotateSave([], exp, prefill_annotation=annotation, dbclass=db)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
+        primerid = ui.primerid
         description = str(ui.bdescription.text())
         method = str(ui.bmethod.text())
         if method == '':
@@ -208,7 +212,7 @@ def update_annotation_gui(db, annotation, exp):
 
         # store the history
         global history
-        history[exp.exp_metadata['data_md5']] = {'annotations': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        history[exp.exp_metadata['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
         return ''
     return 'Update annotation cancelled'
 
@@ -319,7 +323,7 @@ def study_data_ui(cexp):
         for citem in qtlistiteritems(dbsi.blist):
             cdata = qtlistgetdata(citem)
             allstudydata.append((cdata['type'], cdata['value']))
-            if cdata['fromdb'] == False:
+            if cdata['fromdb'] is False:
                 newstudydata.append((cdata['type'], cdata['value']))
 
         if len(allstudydata) <= 2:
@@ -357,7 +361,7 @@ class DBStudyInfo(QtWidgets.QDialog):
         if experimentid is not None:
             info = bdb.get_experiment_info(experimentid)
             for cinfo in info:
-                qtlistadd(self.blist, cinfo[0]+':'+cinfo[1], {'fromdb': True, 'type': cinfo[0], 'value': cinfo[1]}, color='grey')
+                qtlistadd(self.blist, cinfo[0] + ':' + cinfo[1], {'fromdb': True, 'type': cinfo[0], 'value': cinfo[1]}, color='grey')
         else:
             # if not in database, get details from map file
             # the supplied details (supplied to the init function via exp_details)
@@ -424,7 +428,7 @@ class DBStudyInfo(QtWidgets.QDialog):
             if cdata['type'].lower() == 'name':
                 name_found = True
             allstudydata.append((cdata['type'], cdata['value']))
-            if cdata['fromdb'] == False:
+            if cdata['fromdb'] is False:
                 newstudydata.append((cdata['type'], cdata['value']))
         # validate we have something else than the md5 for data/map
         if len(allstudydata) <= 2:
@@ -451,8 +455,11 @@ class DBAnnotateSave(QtWidgets.QDialog):
     # Attributes:
     # used to store the ontology values for the autocomplete
     _ontology_dict = None
+    # used to store the dbbact (user) ontology terms
+    _ontology_dbbact = None
+    _ontology_dbbact_max_id = 0
 
-    def __init__(self, selected_features, expdat, prefill_annotation=None):
+    def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None):
         '''Create the manual annotation window
 
         Parameters
@@ -464,6 +471,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
         prefill_annotation : dict or None (optional)
             None (default) to prefill from history
             dict to pre-fill using dict fields instead
+        dbclass: dbbact or None, optional
+            the dbBact database to interact with (used to get the primer regions possible)
+
         '''
         super(DBAnnotateSave, self).__init__()
 
@@ -476,13 +486,17 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.bisa.toggled.connect(self.radiotoggle)
         self.bdiffpres.toggled.connect(self.radiotoggle)
         self.bisatype.currentIndexChanged.connect(self.isatypechanged)
-        # self.bhistory.clicked.connect(self.history)
+
+        # set the primer region button
+        if dbclass:
+            self.bhistory.clicked.connect(lambda: self.select_primers(dbclass))
+
         self.cexp = expdat
         self.lnumbact.setText(str(len(selected_features)))
-        completer = QtWidgets.QCompleter()
-        self.bontoinput.setCompleter(completer)
 
         # create the autocomplete ontology list
+        completer = QtWidgets.QCompleter()
+        self.bontoinput.setCompleter(completer)
         model = QtCore.QStringListModel()
         completer.setModel(model)
         # completer.setCompletionMode(QCompleter.InlineCompletion)
@@ -491,10 +505,13 @@ class DBAnnotateSave(QtWidgets.QDialog):
         # make the completer selection also erase the text edit
         completer.activated.connect(self.cleartext, type=Qt.QueuedConnection)
         # init the ontology values
-        self._load_ontologies()
+        self._load_ontologies(dbclass)
         model.setStringList(self._ontology_sorted_list)
 
         self.setWindowTitle(expdat.description)
+
+        # set the default primer id for the annotation sequences
+        self.primerid = 'V4'
 
         if prefill_annotation is None:
             # try to autofill from history if experiment annotated
@@ -507,11 +524,34 @@ class DBAnnotateSave(QtWidgets.QDialog):
             logger.debug('Filling annotation details from supplied annotation')
             self.fill_from_annotation(prefill_annotation, onlyall=False)
 
+        # set the primer region button label to the region
+        self.bhistory.setText(self.primerid)
+
         # self.prefillinfo()
         self.bontoinput.setFocus()
         self.show()
 
-    def _load_ontologies(self):
+    def _load_ontologies(self, dbclass=None):
+        '''Load the ontology term files from the local computer (for autocomplete). The data is stored locally in DBAnnotateSave._ontology_dict and DBAnnotateSave._ontology_from_id
+
+        The needed files are created by a script from ontology files and are:
+        data/ontology.pickle:
+        dict of {name(str): ontologyid(str)}
+            name:
+                contains the full term/sysnonim name + "(+"ONTOLOGY NAME+"original term + ")". This is the string displayed to the user
+            ontologyid:
+                contains a unique id for this term that appears in the data/ontologyfromid.pickle file (loaded to DBAnnotateSave._ontology_from_id).
+
+        data/ontologyfromid.pickle:
+        dict of {ontologyid(str): term(str)}
+            ontologyid:
+                contains a unique id for each of the terms (linked from data/ontologies.pickle or DBAnnotateSave._ontology_dict)
+            term:
+                the dbbact term name
+
+        For example for the term "united states of america" we have in DBAnnotateSave._ontology_dict key "U.S.A. :GAZ(United States of America)" with value GAZ:00002459
+        and in DBAnnotateSave._ontology_from_id we have key "GAZ:00002459" with value "United States of America"
+        '''
         if DBAnnotateSave._ontology_dict is None:
             print('loading')
             ontology_file = resource_filename(__package__, 'data/ontology.pickle')
@@ -519,10 +559,48 @@ class DBAnnotateSave(QtWidgets.QDialog):
             DBAnnotateSave._ontology_dict = ontology
             print('sorting')
             olist = list(DBAnnotateSave._ontology_dict.keys())
-            DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
+            DBAnnotateSave._ontology_sorted_list = olist
+            # DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
 
             ontology_from_id_file = resource_filename(__package__, 'data/ontologyfromid.pickle')
             DBAnnotateSave._ontology_from_id = pickle.load(open(ontology_from_id_file, 'rb'))
+
+        # get the dbbact ontology terms from the dbbact file (if exists) otherwise create
+        if DBAnnotateSave._ontology_dbbact is None:
+            user_ontology = {}
+            logger.debug('loading dbbact user ontology terms file')
+            user_ontology_file = resource_filename(__package__, 'data/user_ontology.pickle')
+            if os.path.isfile(user_ontology_file):
+                user_ontology = pickle.load(open(user_ontology_file, 'rb'))
+            else:
+                if dbclass is not None:
+                    logger.info('User ontology file %s does not exist. Creating...' % user_ontology_file)
+                    user_ontology = dbclass.db.get_ontology_terms()
+                    with open(user_ontology_file, 'wb') as ofl:
+                        pickle.dump(user_ontology, ofl)
+                        logger.info('Created user ontology file %s' % user_ontology_file)
+
+            DBAnnotateSave._ontology_dbbact = user_ontology
+            # get the maximal ontology termid (so sync is faster next time)
+            DBAnnotateSave._ontology_dbbact_max_id = user_ontology[max(user_ontology, key=user_ontology.get)]
+
+        # now add more ontology terms from the dbbact ontology
+        if dbclass is not None:
+            new_terms = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
+            if len(new_terms) > 0:
+                logger.debug('Got %d new dbbact user ontology terms' % len(new_terms))
+                DBAnnotateSave._ontology_dbbact_max_id = new_terms[max(new_terms, key=new_terms.get)]
+                DBAnnotateSave._ontology_dbbact.update(new_terms)
+                # save the updated terms list if we have enough new terms (don't want to save everything every time)
+                if len(new_terms) > 25:
+                    with open(user_ontology_file, 'wb') as ofl:
+                        pickle.dump(DBAnnotateSave._ontology_dbbact, ofl)
+
+        # update the terms sorted list with the user terms
+        all_term_list = DBAnnotateSave._ontology_sorted_list
+        if DBAnnotateSave._ontology_dbbact is not None:
+            all_term_list.extend(DBAnnotateSave._ontology_dbbact.keys())
+        DBAnnotateSave._ontology_sorted_list = sorted(all_term_list, key=lambda s: s.lower())
 
     # def history(self):
     #     curtext = []
@@ -569,6 +647,30 @@ class DBAnnotateSave(QtWidgets.QDialog):
             self.bdescription.setText(annotation['description'])
         if 'method' in annotation:
             self.bmethod.setText(annotation['method'])
+        if 'primerid' in annotation:
+            self.primerid = annotation['primerid']
+        # activate the appropriate annotation type buttons
+        if 'annotationtype' in annotation:
+            atype = annotation['annotationtype'].lower()
+            if atype == 'common':
+                ctypeidx = self.bisatype.findText('Common', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'highfreq':
+                ctypeidx = self.bisatype.findText('high', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'other':
+                ctypeidx = self.bisatype.findText('other', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'diffexp':
+                self.bdiffpres.setChecked(True)
+                pass
+            elif atype == 'contamination':
+                ctypeidx = self.bisatype.findText('contam', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
 
     def radiotoggle(self):
         if self.bisa.isChecked():
@@ -583,6 +685,20 @@ class DBAnnotateSave(QtWidgets.QDialog):
         changed the selection of isatype combobox so need to activate the isa radio button
         """
         self.bisa.setChecked(True)
+
+    def select_primers(self, dbclass=None):
+        primer_info = dbclass.db.get_primers()
+        primers = ['%s (%s-%s)' % (cpi['name'], cpi['fprimer'], cpi['rprimer']) for cpi in primer_info]
+        listwin = SListWindow(primers, listname='Select region')
+        res = listwin.exec_()
+        if res == QtWidgets.QDialog.Accepted:
+            # pos = listwin.get_selected()
+            pos = listwin.selected_pos
+            cprime = primer_info[pos]['name']
+            # set the primer region name on the button
+            self.bhistory.setText(cprime)
+            self.primerid = cprime
+        return None
 
     def studyinfo(self):
         study_data_ui(self.cexp)
@@ -848,3 +964,81 @@ def show_and_ask(msg, keyval):
     a.exec_()
     if cb.isChecked():
         set_config_value(keyval, 'yes', section='dbbact')
+
+
+class SListWindow(QtWidgets.QDialog):
+    def __init__(self, listdata=[], listname=None):
+        '''Create a list window with items in the list and the listname as specified
+
+        Parameters
+        ----------
+        listdata: list of str, optional
+            the data to show in the list
+        listname: str, optional
+            name to display above the list
+        '''
+        super().__init__()
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        if listname is not None:
+            self.setWindowTitle(listname)
+
+        self.layout = QVBoxLayout(self)
+
+        self.w_list = QListWidget()
+        self.layout.addWidget(self.w_list)
+        self.selected_pos = None
+
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttonBox.accepted.connect(self.accept_get_pos)
+        # buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        self.layout.addWidget(buttonBox)
+
+        for citem in listdata:
+            self.w_list.addItem(citem)
+
+        self.w_list.itemDoubleClicked.connect(self.list_double_click)
+
+        self.show()
+        self.adjustSize()
+
+    def accept_get_pos(self):
+        self.selected_pos = self.get_selected()
+        self.accept()
+
+    def add_item(self, text, color='black', dblclick_data=None):
+        '''Add an item to the list
+
+        Parameters
+        ----------
+        text : str
+            the string to add
+        color : str, optional
+            the color of the text to add
+        dblclick_function : function or None
+            the function to call when this item is double clicked (or None to ignore)
+        '''
+        item = QtWidgets.QListWidgetItem()
+        item.setText(text)
+        if color == 'black':
+            ccolor = QtGui.QColor(0, 0, 0)
+        elif color == 'red':
+            ccolor = QtGui.QColor(155, 0, 0)
+        elif color == 'blue':
+            ccolor = QtGui.QColor(0, 0, 155)
+        elif color == 'green':
+            ccolor = QtGui.QColor(0, 155, 0)
+        item.setForeground(ccolor)
+        item.setData(QtCore.Qt.UserRole, dblclick_data)
+        self.w_list.addItem(item)
+
+    def list_double_click(self, item):
+        data = item.data(QtCore.Qt.UserRole)
+        if data is not None:
+            data['database'].show_term_details(data['term'], data['exp'], data['features1'], data['features2'], gui='qt5')
+
+    def get_selected(self):
+        items = self.w_list.selectedItems()
+        for citem in items:
+            spos = self.w_list.row(citem)
+        return spos
