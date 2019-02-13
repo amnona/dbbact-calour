@@ -586,7 +586,10 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
         # now add more ontology terms from the dbbact ontology
         if dbclass is not None:
-            new_terms = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
+            try:
+                new_terms = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
+            except AttributeError:
+                new_terms = []
             if len(new_terms) > 0:
                 logger.debug('Got %d new dbbact user ontology terms' % len(new_terms))
                 DBAnnotateSave._ontology_dbbact_max_id = new_terms[max(new_terms, key=new_terms.get)]
