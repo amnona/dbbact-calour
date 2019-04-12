@@ -158,7 +158,7 @@ class DBBact(Database):
             return
         webbrowser.open(address, new=new)
 
-    def add_all_annotations_to_exp(self, exp):
+    def add_all_annotations_to_exp(self, exp, **kwargs):
         '''Get annotations for all sequences in experiment and store them in it
 
         Stores all the annotation details in exp.exp_metadata. Stored key/values are:
@@ -170,18 +170,23 @@ class DBBact(Database):
             key is annotaitonID (int), value is the dict of annotation details.
         '__dbbact_term_info': dict of {term, {'total_annotations':XXX, 'total_sequences':YYY}}
             number of total annotations and sequences in the database having this term
+        **kwargs:
+            extra parameters to pass to get_seq_list_fast_annotations()
 
         Parameters
         ----------
         exp : ``Experiment``
             The experiment to get the details for and store them in
+        **kwargs:
+            extra parameters to pass to get_seq_list_fast_annotations()
 
-        Returns:
+        Returns
+        -------
         str
         '' if ok, otherwise error string
         '''
         logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
-        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values)
+        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values, **kwargs)
         exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
         exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
         exp.exp_metadata['__dbbact_annotations'] = annotations
@@ -245,12 +250,13 @@ class DBBact(Database):
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp)
+                self.add_all_annotations_to_exp(exp, **kwargs)
             # and filter only the ones relevant for features
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
             annotations = exp.exp_metadata['__dbbact_annotations']
             term_info = exp.exp_metadata['__dbbact_term_info']
+            taxonomy = exp.exp_metadata['__dbbact_taxonomy']
         else:
             sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, **kwargs)
 
@@ -665,20 +671,20 @@ class DBBact(Database):
         ca.Experiment
             with annotations as rows, features as columns
         '''
-        names1 = exp.feature_metadata['_calour_diff_abundance_group'][exp.feature_metadata['_calour_diff_abundance_effect'] < 0]
+        names1 = exp.feature_metadata['_calour_direction'][exp.feature_metadata['_calour_stat'] < 0]
         if len(names1) > 0:
             group1_name = names1.values[0]
         else:
             group1_name = 'group1'
-        names2 = exp.feature_metadata['_calour_diff_abundance_group'][exp.feature_metadata['_calour_diff_abundance_effect'] > 0]
+        names2 = exp.feature_metadata['_calour_direction'][exp.feature_metadata['_calour_stat'] > 0]
         if len(names2) > 0:
             group2_name = names2.values[0]
         else:
             group2_name = 'group2'
 
-        negative = exp.feature_metadata._calour_diff_abundance_effect < 0
+        negative = exp.feature_metadata['_calour_stat'] < 0
         group1_features = exp.feature_metadata.index.values[negative.values]
-        positive = exp.feature_metadata._calour_diff_abundance_effect > 0
+        positive = exp.feature_metadata['_calour_stat'] > 0
         group2_features = exp.feature_metadata.index.values[positive.values]
 
         newexp = self.show_term_details(term, exp, group1_features, group2_features, group1_name=group1_name, group2_name=group2_name, **kwargs)
@@ -879,10 +885,10 @@ class DBBact(Database):
 
         # get the two bacteria groups
         if bacteria_groups is None:
-            vals = exp.feature_metadata['_calour_diff_abundance_group'].unique()
-            group1 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_diff_abundance_group'] == vals[0]].values)
+            vals = exp.feature_metadata['_calour_direction'].unique()
+            group1 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_direction'] == vals[0]].values)
             group1_name = vals[0]
-            group2 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_diff_abundance_group'] == vals[1]].values)
+            group2 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_direction'] == vals[1]].values)
             group2_name = vals[1]
         else:
             group1 = bacteria_groups[0]
@@ -998,10 +1004,10 @@ class DBBact(Database):
 
         # get the two bacteria groups
         if bacteria_groups is None:
-            vals = exp.feature_metadata['_calour_diff_abundance_group'].unique()
-            group1 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_diff_abundance_group'] == vals[0]].values)
+            vals = exp.feature_metadata['_calour_direction'].unique()
+            group1 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_direction'] == vals[0]].values)
             group1_name = vals[0]
-            group2 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_diff_abundance_group'] == vals[1]].values)
+            group2 = list(exp.feature_metadata.index[exp.feature_metadata['_calour_direction'] == vals[1]].values)
             group2_name = vals[1]
         else:
             group1 = bacteria_groups[0]
