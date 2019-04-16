@@ -93,6 +93,8 @@ class DBBact(Database):
         super().__init__(database_name='dbBact', methods=['get', 'annotate', 'enrichment'])
         username = get_config_value('username', section='dbbact')
         password = get_config_value('password', section='dbbact')
+        dburl = get_config_value('dburl', section='dbbact', fallback=dburl)
+        web_interface = get_config_value('web_interface', section='dbbact', fallback=web_interface)
         # dburl = 'http://127.0.0.1:5001'
         # print('Using local database!!!!')
         self.db = DBAccess(dburl=dburl, username=username, password=password)
