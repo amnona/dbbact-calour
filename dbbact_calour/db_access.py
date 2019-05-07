@@ -1215,7 +1215,7 @@ class DBAccess():
 
         # fix names ("LOWER IN" instead of "-") and add info about single experiment
         new_term_list = []
-        orig_term_list = term_list
+        orig_term_list = term_list.copy()
         for cterm in term_list:
             if cterm[0] == '-':
                 ccterm = 'LOWER IN ' + cterm[1:]
@@ -1306,7 +1306,10 @@ class DBAccess():
                 if len(enriched_exps) >= min_appearances:
                     num_enriched_exps.append(len(enriched_exps))
                     if term_info is not None:
-                        num_total_exps.append(term_info[cterm]['total_experiments'])
+                        if cterm in term_info:
+                            num_total_exps.append(term_info[cterm]['total_experiments'])
+                        else:
+                            num_total_exps.append(0)
                     else:
                         num_total_exps.append(-1)
                     # num_total_exps.append(len(total_exp_annotations))
@@ -1354,6 +1357,11 @@ class DBAccess():
             # for idx, cterm in enumerate(term_list):
             #     term_list[idx] = term_list[idx] + ' [%d/%d]' % (num_enriched_exps[idx], num_total_exps[idx])
 
+        # normalize the effect size to be in the [0:1] range (0 for random, 1 for fully ordered)
+        n_g1 = len(g1_features)
+        n_g2 = len(g2_features)
+        odif = odif / ((((n_g1 + 1) / 2) + n_g2) - ((n_g2 + 1) / 2))
+
         res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
         features = list(g1_features)
         features.extend(g2_features)
@@ -1386,52 +1394,6 @@ class DBAccess():
             for cterm in sterms.index.values:
                 exp_term_count[cterm] += 1
         return exp_term_count
-
-    def _get_term_features2(self, features, feature_terms):
-        '''DEPRACATED!!!!!!
-        Get dict of number of appearances in each sequence keyed by term.
-        This function inflates each bacteria to the total number of annotations it has.
-        So it can be used for the randomizing annotation count null hypothesis model
-
-        Parameters
-        ----------
-        features : list of str
-            A list of DNA sequences
-        feature_terms : dict of {feature: list of tuples of (term, amount)}
-            The terms associated with each feature in exp
-            feature (key) : str the feature (out of exp) to which the terms relate
-            feature_terms (value) : list of tuples of (str or int the terms associated with this feature, count)
-
-        Returns
-        -------
-        numpy array of T (terms) * F (features)
-            total counts of each term (row) in each feature (column)
-        list of str
-            list of the terms corresponding to the numpy array rows
-        '''
-        # get all terms
-        terms = {}
-        cpos = 0
-        for cfeature, ctermlist in feature_terms.items():
-            for cterm, ccount in ctermlist:
-                if cterm not in terms:
-                    terms[cterm] = cpos
-                    cpos += 1
-
-        tot_features_inflated = 0
-        feature_pos = {}
-        for cfeature in features:
-            ctermlist = feature_terms[cfeature]
-            feature_pos[cfeature] = tot_features_inflated
-            tot_features_inflated += len(ctermlist)
-
-        res = np.zeros([len(terms), tot_features_inflated])
-
-        for cfeature in features:
-            for cterm, ctermcount in feature_terms[cfeature]:
-                res[terms[cterm], feature_pos[cfeature]] += ctermcount
-        term_list = sorted(terms, key=terms.get)
-        return res, term_list
 
     def get_ontology_terms(self, min_term_id=None, ontologyid=1):
         '''Get all the terms in an ontology, starting with termid min_term_id
