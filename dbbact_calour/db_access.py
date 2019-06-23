@@ -1868,5 +1868,4 @@ class DBAccess():
         else:
             logger.debug('Found %d enriched annotations, %d enriched experiments for term %s' % (len(keep), len(enriched_experiments), term))
 
-        # print(total_exp_annotations)
         return enriched_experiments, enriched_annotations, total_exp_annotations

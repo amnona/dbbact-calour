@@ -466,7 +466,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
-        ignore_exp: list of int or None or True(optional)
+        ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
@@ -555,7 +555,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
-        ignore_exp: list of int or None or True(optional)
+        ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
@@ -881,9 +881,9 @@ class DBBact(Database):
             if not None, clip term circle size to max_size.
             Used to make cases where term has lots of sequences nicer.
             NOTE: it changes the circle size and number!
-        ignore_exp: list of int or True (optional)
-            List of experiment ids to ignore in the analysis
-            True to ignore annotations from the current experiment (exp)
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
         '''
         import matplotlib.pyplot as plt
@@ -1097,7 +1097,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
-        ignore_exp: list of int or None or True(optional)
+        ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
@@ -1235,16 +1235,20 @@ class DBBact(Database):
         features: list of str or None, optional
             None to use the features from exp. Otherwise, a list of features ('ACGT' sequences) that is a subset of the features in exp (if exp is supplied)
             Note: if exp is None, must provide features.
-        type: str, optional
+        term_type: str, optional
             What score to use for the word cloud. Options are:
             'recall': sizes are based on the recall (fraction of dbbact term containing annotations that contain the sequences)
             'precision': sizes are based on the precision (fraction of sequence annotations of the experiment sequences that contain the term)
             'fscore': a combination of recall and precition (r*p / (r+p))
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment (if exp is supplied)
+            None (default) to use annotations from all experiments including the current one
         width, height: int, optional
             The width and heigh of the figure (high values are slower but nicer resolution for publication)
             If inside a jupyter notebook, use savefig(f, dpi=600)
         freq_weighted: bool, optional
-            Onlywhen supplying exp
+            Only when supplying exp
             True to weight each bacteria by it's mean frequency in exp.data
             NOT IMPLEMENTED YET!!!
         relative_scaling: float, optional
@@ -1252,6 +1256,9 @@ class DBBact(Database):
         focus_terms: list of str or None, optional
             if not None, use only annotations containing all terms in focus_terms list.
             for example, if focus_terms=['homo sapiens', 'feces'], will only draw the wordcloud for annotations of human feces
+        threshold: float or None, optional
+            if not None, show in word cloud only terms with p-value <= threshold (using the null model of binomial with term freq. as observed in all dbbact)
+
 
         Returns
         -------
@@ -1302,12 +1309,22 @@ class DBBact(Database):
         # change the sequence annotations from dict to list of tuples
         sequence_annotations = [(k, v) for k, v in sequence_annotations.items()]
 
-        # calculate the recall, precision, fscore for each term
+        # set the experiments to ignore in the wordcloud
+        if ignore_exp is True:
+            if exp is None:
+                raise ValueError('Cannot use ignore_exp=True when exp is not supplied')
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         if ignore_exp is None:
             ignore_exp = []
+
         # we need to rekey the annotations with an str (old problem...)
         annotations = {str(k): v for k, v in annotations.items()}
 
+        # calculate the recall, precision, fscore for each term
         fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
 
         logger.debug('draw_cloud for %d words' % len(fscores))
