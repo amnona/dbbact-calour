@@ -364,7 +364,7 @@ class DBBact(Database):
         # return sequence_annotations
         # return sequence_terms
 
-    def filter_features_based_on_terms(self, exp, terms, filter_method='any', term_types=('single'), ignore_exp=None, negate=False):
+    def filter_features_based_on_terms(self, exp, terms, filter_method='any', term_types=('single'), ignore_exp=None, negate=False, max_id=None):
         '''filter features based on how many experiments they appear in
 
         Parameters
@@ -385,10 +385,12 @@ class DBBact(Database):
             list of xperiment IDs to ignore annotations from
         negate: bool, optional
             True to reverse the filtering (keep instead of remove)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         '''
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
         # get the dbbact annotations
         sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
         sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
@@ -448,17 +450,22 @@ class DBBact(Database):
         from . import dbannotation
         dbannotation.update_annotation_gui(self.db, annotation, exp)
 
-    def enrichment(self, exp, features, **kwargs):
-        '''Get the list of enriched terms in features compared to all features in exp.
+    def enrichment(self, exp, features, max_id=None, **kwargs):
+        '''Get the list of enriched terms in features compared to all other features in exp.
 
         given uneven distribtion of number of terms per feature
 
         Parameters
         ----------
         exp : calour.Experiment
-            The experiment to compare the features to
+            The experiment to compare the features to.
+            NOTE: exp must contain the
         features : list of str
-            The features (from exp) to test for enrichmnt
+            The features (from exp) to test for enrichmnt (comapred to the other features in exp)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+
+        **kwargs: additional parameters supplied to db_access.term_enrichment(). These include:
         term_type : str or None (optional)
             The type of annotation data to test for enrichment
             options are:
@@ -521,7 +528,7 @@ class DBBact(Database):
 
         # add all annotations to experiment if not already added
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
 
         ignore_exp = kwargs.get('ignore_exp')
         # if ignore exp is True, it means we should ignore the current experiment
@@ -624,7 +631,7 @@ class DBBact(Database):
         newexp = newexp.sort_by_metadata(field='expid', axis='f')
         newexp.plot(feature_field='annotation', gui='qt5', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=False)
 
-    def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', **kwargs):
+    def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', max_id=None, **kwargs):
         '''
         Plot a heatmap for all annotations containing term in experiment
         Rows are the annotations, columns are the sequences (sorted by features/group2_features)
@@ -641,6 +648,8 @@ class DBBact(Database):
             name for group1/ group2 (for the plot)
         **kwargs:
             passed to calour.plot() (i.e. gui='qt5', etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
         Returns
         -------
@@ -654,7 +663,7 @@ class DBBact(Database):
         all_seqs = list(features.copy())
         all_seqs.extend(list(group2_features))
         if '__dbbact_sequence_annotations' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
         tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
@@ -1072,7 +1081,7 @@ class DBBact(Database):
             all_figures.append(f)
         return all_figures
 
-    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1, use_term_pairs=False):
+    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1, use_term_pairs=False, max_id=None):
         '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
@@ -1122,6 +1131,8 @@ class DBBact(Database):
             the FDR level desired (0.1 means up to 10% of results can be due to null hypothesis)
         Use_term_pairs: bool, optional
             True to get all term pair annotations (i.e. human+feces etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
         Returns
         -------
@@ -1146,7 +1157,7 @@ class DBBact(Database):
 
         # add all annotations to experiment if not already added
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
 
         # if ignore exp is True, it means we should ignore the current experiment
         if ignore_exp is True:
@@ -1224,7 +1235,7 @@ class DBBact(Database):
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
-    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None):
+    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
         '''Draw a word_cloud for a given set of sequences
 
         Parameters
@@ -1258,6 +1269,8 @@ class DBBact(Database):
             for example, if focus_terms=['homo sapiens', 'feces'], will only draw the wordcloud for annotations of human feces
         threshold: float or None, optional
             if not None, show in word cloud only terms with p-value <= threshold (using the null model of binomial with term freq. as observed in all dbbact)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
 
         Returns
@@ -1275,7 +1288,7 @@ class DBBact(Database):
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp)
+                self.add_all_annotations_to_exp(exp, max_id=max_id)
             # and filter only the ones relevant for features
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
