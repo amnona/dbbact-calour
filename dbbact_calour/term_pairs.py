@@ -5,6 +5,8 @@ from logging import getLogger, NOTSET, basicConfig
 from logging.config import fileConfig
 from pkg_resources import resource_filename
 
+import numpy as np
+import scipy as sp
 
 # prepare the logging
 logger = getLogger(__name__)
@@ -37,7 +39,7 @@ def debug(level, msg):
 		logger.warning(msg)
 
 
-def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single')):
+def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single'), threshold=None):
 	'''Get f score, recall and precision for set of annotations
 
 	Parameters
@@ -48,6 +50,12 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 		list of experiment ids to ignore in the analysis
 	term_info: dict of {term (str): details {"total_annotations": float, "total_sequences": float}} (see dbbact rest-api /ontology/get_term_stats) or None, optional
 		The statistics about each term. if None, the function will contact dbbact to get the term_info
+	term_types: list of str
+		the terms to calculate enrichment scores for. options are:
+		'single': each single term (i.e. 'feces')
+		'pairs': all term pairs (i.e. 'feces+homo sapiens')
+	threshold: float or None, optional
+		if not None, return only terms that are significantly enriched in the annotations compared to complete database null with p-val <= threshold
 
 	Returns
 	-------
@@ -71,6 +79,8 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 	for cterm, crecall in recall.items():
 		cprecision = precision[cterm]
 		fscore[cterm] = 2 * (crecall * cprecision) / (crecall + cprecision)
+		# fscore[cterm] = 2 * (crecall * cprecision) / (crecall + cprecision) * ((cprecision + 1.1) / (cprecision + 0.1))
+		# fscore[cterm] = np.sqrt(crecall + cprecision)
 
 	# create the reduced f-scores that contain each term only once (for term pairs)
 	zz = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
@@ -86,6 +96,18 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 			reduced_f[cterm] = cscore
 			for ccterm in cterm.split('+'):
 				found_items.add(ccterm)
+
+	if threshold is not None:
+		# filter away non-significant terms
+		pvals = get_term_pvals(annotations, seqannotations, term_info, threshold=threshold)
+		for cterm, creject in pvals.items():
+			if not creject:
+				fscore.pop(cterm)
+				recall.pop(cterm)
+				precision.pop(cterm)
+				term_count.pop(cterm)
+				reduced_f.pop(cterm)
+
 	return fscore, recall, precision, term_count, reduced_f
 
 
@@ -381,3 +403,63 @@ def get_terms(annotation, term_types=('single')):
 
 	debug(1, 'found %d total terms for annotation %s' % (len(terms), annotation['annotationid']))
 	return terms
+
+
+def get_term_pvals(annotations, seqannotations, term_info=None, ignore_exp=[], term_types=('single'), threshold=0.01):
+	'''Calculate the precision (how many of the sequences contain the term) for each term in annotations.
+
+	Parameters
+	----------
+	annotations: dict of {annotationid (str): annotation(dict)}
+	seqannotations: list of (seqid, [annotation ids])
+	term_info: dict of {term (str): details {"total_annotations": float, "total_sequences": float}} (see dbbact rest-api /ontology/get_term_stats) or None, optional
+		The statistics about each term. if None, the function will contact dbbact to get the term_info
+	ignore_exp: list of int, optional:
+		the experimentIDs to ignore for the precision calculation (if empty use all experiments)
+	term_types: list of str, optional
+		types of terms to use. can include the following (including combinations):
+			'single': use each term
+			'pairs': use term pairs
+	threshold: float, optional
+		maximal p-value to filter
+
+	Returns
+	-------
+	dict of {term (str): reject (bool)}
+		if True, reject null hypothesis (not random)
+	'''
+	# get the sequences where each term appears (at least once in their annotations)
+	term_counts = defaultdict(int)
+	total_annotations = 0
+	for cseqid, cseq_annotations in seqannotations:
+		cseq_term_counts = defaultdict(float)
+		cseq_total_annotations = 0
+		for cannotationid in cseq_annotations:
+			cannotation = annotations[str(cannotationid)]
+			if cannotation['expid'] in ignore_exp:
+				continue
+			cseq_total_annotations += 1
+			for cterm in get_terms(cannotation, term_types=term_types):
+				cseq_term_counts[cterm] += 1
+		if cseq_total_annotations == 0:
+			continue
+		for cterm in cseq_term_counts.keys():
+			term_counts[cterm] += cseq_term_counts[cterm]
+		total_annotations += cseq_total_annotations
+
+	# TODO: fix this!!!!
+	total_db_annotations = 3925
+	print('total db annotations: %d' % total_db_annotations)
+	print('total annotations: %d' % total_annotations)
+	pvals = {}
+	for cterm, cterm_counts in term_counts.items():
+		if cterm not in term_info:
+			continue
+		p_null = term_info[cterm]['total_annotations'] / total_db_annotations
+		pv = 1 - sp.stats.binom.cdf(cterm_counts - 1, total_annotations, p_null)
+		if pv > threshold:
+			pvals[cterm] = False
+			# print('term %s, counts %d, observed p: %f, p_null: %f, pv:%f' % (cterm, cterm_counts, cterm_counts / total_annotations, p_null, pv))
+		else:
+			pvals[cterm] = True
+	return pvals

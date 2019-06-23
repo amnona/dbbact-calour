@@ -160,7 +160,7 @@ class DBBact(Database):
             return
         webbrowser.open(address, new=new)
 
-    def add_all_annotations_to_exp(self, exp, **kwargs):
+    def add_all_annotations_to_exp(self, exp, max_id=None, **kwargs):
         '''Get annotations for all sequences in experiment and store them in it
 
         Stores all the annotation details in exp.exp_metadata. Stored key/values are:
@@ -172,13 +172,13 @@ class DBBact(Database):
             key is annotaitonID (int), value is the dict of annotation details.
         '__dbbact_term_info': dict of {term, {'total_annotations':XXX, 'total_sequences':YYY}}
             number of total annotations and sequences in the database having this term
-        **kwargs:
-            extra parameters to pass to get_seq_list_fast_annotations()
 
         Parameters
         ----------
         exp : ``Experiment``
             The experiment to get the details for and store them in
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         **kwargs:
             extra parameters to pass to get_seq_list_fast_annotations()
 
@@ -188,7 +188,7 @@ class DBBact(Database):
         '' if ok, otherwise error string
         '''
         logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
-        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values, **kwargs)
+        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values, max_id=max_id, **kwargs)
         exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
         exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
         exp.exp_metadata['__dbbact_annotations'] = annotations
@@ -216,7 +216,7 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), **kwargs):
+    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), max_id=None, **kwargs):
         '''Get dict of terms scores per feature
 
         Parameters
@@ -232,12 +232,15 @@ class DBBact(Database):
             'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
             'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
             'contamination': get if bacteria is contaminant or not
+            'fscore': ...
         ignore_exp : list of int or None (optional)
             the list of experimentids to ignore (don't take info from them)
         term_method: list of str, optional
             the methods to get all the terms for each feature. can include:
                 'singe': get the single terms per each feature (i.e. 'feces', '-control', etc.)
                 'pairs': get the term pairs for each feature (i.e. 'feces+homo sapiens', etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         kwargs:
             Parameters to pass to db_access.get_seq_list_fast_annotations. can include:
             get_taxonomy=False, get_parents=False, get_term_info=True
@@ -252,7 +255,7 @@ class DBBact(Database):
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp, **kwargs)
+                self.add_all_annotations_to_exp(exp, max_id=max_id, **kwargs)
             # and filter only the ones relevant for features
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
@@ -260,7 +263,7 @@ class DBBact(Database):
             term_info = exp.exp_metadata['__dbbact_term_info']
             taxonomy = exp.exp_metadata['__dbbact_taxonomy']
         else:
-            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, **kwargs)
+            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, max_id=max_id, **kwargs)
 
         # get the current experimentID to ignore if ignore_exp is True
         if ignore_exp is True:
@@ -482,6 +485,8 @@ class DBBact(Database):
             int to specify the random seed for numpy.random.
         use_term_pairs: bool, optional
             True to also test enrichment in pairs of terms (i.e. homo sapiens+feces, etc.)
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all the terms in focus_terms
 
         Returns
         -------
@@ -495,6 +500,9 @@ class DBBact(Database):
             frac_group2 : fraction of total terms in group 2 which are the specific term (float)
             num_group1 : number of total terms in group 1 which are the specific term (float)
             num_group2 : number of total terms in group 2 which are the specific term (float)
+            num_enriched_exps: number of experiments where the term is significantly enriched
+            num_enriched_annotations: number of annotations where the term is significantly enriched
+            num_total_exps: number of experiments with this annotation in the term annotations list
             description : the term (str)
         numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
             for term in feature
@@ -1216,7 +1224,7 @@ class DBBact(Database):
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
-    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False):
+    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None):
         '''Draw a word_cloud for a given set of sequences
 
         Parameters
@@ -1239,6 +1247,11 @@ class DBBact(Database):
             Onlywhen supplying exp
             True to weight each bacteria by it's mean frequency in exp.data
             NOT IMPLEMENTED YET!!!
+        relative_scaling: float, optional
+            the effect of the score on the word size. 0.5 is a good compromise (passed to wordcloud.Wordcloud())
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all terms in focus_terms list.
+            for example, if focus_terms=['homo sapiens', 'feces'], will only draw the wordcloud for annotations of human feces
 
         Returns
         -------
@@ -1268,6 +1281,24 @@ class DBBact(Database):
                 raise ValueError('Must supply experiment or features to use for wordcloud')
             sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features)
 
+        # filter based on focus_terms
+        if focus_terms is not None:
+            focus_terms = set(focus_terms)
+            ok_annotations = {}
+            for cid, cannotation in annotations.items():
+                # check if an
+                found_terms = set()
+                for cdetail in cannotation['details']:
+                    if cdetail[1] in focus_terms:
+                        found_terms.add(cdetail[1])
+                if len(found_terms) == len(focus_terms):
+                    ok_annotations[cid] = cannotation
+            logger.info('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
+            print('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
+            for k, v in sequence_annotations.items():
+                nv = [x for x in v if x in ok_annotations]
+                sequence_annotations[k] = nv
+
         # change the sequence annotations from dict to list of tuples
         sequence_annotations = [(k, v) for k, v in sequence_annotations.items()]
 
@@ -1277,7 +1308,7 @@ class DBBact(Database):
         # we need to rekey the annotations with an str (old problem...)
         annotations = {str(k): v for k, v in annotations.items()}
 
-        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info)
+        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
 
         logger.debug('draw_cloud for %d words' % len(fscores))
         if len(fscores) == 0:
@@ -1308,7 +1339,7 @@ class DBBact(Database):
                 new_scores[ckey] = score[ckey] / maxval
         score = new_scores
 
-        wc = WordCloud(width=width, height=height, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
+        wc = WordCloud(width=width, height=height, background_color="white", relative_scaling=relative_scaling, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
         # wc = WordCloud(width=400 * 3, height=200 * 3, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
         # else:
         #     wc = WordCloud(background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
