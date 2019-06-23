@@ -160,7 +160,7 @@ class DBBact(Database):
             return
         webbrowser.open(address, new=new)
 
-    def add_all_annotations_to_exp(self, exp, **kwargs):
+    def add_all_annotations_to_exp(self, exp, max_id=None, **kwargs):
         '''Get annotations for all sequences in experiment and store them in it
 
         Stores all the annotation details in exp.exp_metadata. Stored key/values are:
@@ -172,13 +172,13 @@ class DBBact(Database):
             key is annotaitonID (int), value is the dict of annotation details.
         '__dbbact_term_info': dict of {term, {'total_annotations':XXX, 'total_sequences':YYY}}
             number of total annotations and sequences in the database having this term
-        **kwargs:
-            extra parameters to pass to get_seq_list_fast_annotations()
 
         Parameters
         ----------
         exp : ``Experiment``
             The experiment to get the details for and store them in
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         **kwargs:
             extra parameters to pass to get_seq_list_fast_annotations()
 
@@ -188,7 +188,7 @@ class DBBact(Database):
         '' if ok, otherwise error string
         '''
         logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
-        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values, **kwargs)
+        sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values, max_id=max_id, **kwargs)
         exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
         exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
         exp.exp_metadata['__dbbact_annotations'] = annotations
@@ -216,7 +216,7 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), **kwargs):
+    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), max_id=None, **kwargs):
         '''Get dict of terms scores per feature
 
         Parameters
@@ -232,12 +232,15 @@ class DBBact(Database):
             'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
             'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
             'contamination': get if bacteria is contaminant or not
+            'fscore': ...
         ignore_exp : list of int or None (optional)
             the list of experimentids to ignore (don't take info from them)
         term_method: list of str, optional
             the methods to get all the terms for each feature. can include:
                 'singe': get the single terms per each feature (i.e. 'feces', '-control', etc.)
                 'pairs': get the term pairs for each feature (i.e. 'feces+homo sapiens', etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         kwargs:
             Parameters to pass to db_access.get_seq_list_fast_annotations. can include:
             get_taxonomy=False, get_parents=False, get_term_info=True
@@ -252,7 +255,7 @@ class DBBact(Database):
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp, **kwargs)
+                self.add_all_annotations_to_exp(exp, max_id=max_id, **kwargs)
             # and filter only the ones relevant for features
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
@@ -260,7 +263,7 @@ class DBBact(Database):
             term_info = exp.exp_metadata['__dbbact_term_info']
             taxonomy = exp.exp_metadata['__dbbact_taxonomy']
         else:
-            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, **kwargs)
+            sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, max_id=max_id, **kwargs)
 
         # get the current experimentID to ignore if ignore_exp is True
         if ignore_exp is True:
@@ -361,7 +364,7 @@ class DBBact(Database):
         # return sequence_annotations
         # return sequence_terms
 
-    def filter_features_based_on_terms(self, exp, terms, filter_method='any', term_types=('single'), ignore_exp=None, negate=False):
+    def filter_features_based_on_terms(self, exp, terms, filter_method='any', term_types=('single'), ignore_exp=None, negate=False, max_id=None):
         '''filter features based on how many experiments they appear in
 
         Parameters
@@ -382,10 +385,12 @@ class DBBact(Database):
             list of xperiment IDs to ignore annotations from
         negate: bool, optional
             True to reverse the filtering (keep instead of remove)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         '''
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
         # get the dbbact annotations
         sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
         sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
@@ -445,17 +450,22 @@ class DBBact(Database):
         from . import dbannotation
         dbannotation.update_annotation_gui(self.db, annotation, exp)
 
-    def enrichment(self, exp, features, **kwargs):
-        '''Get the list of enriched terms in features compared to all features in exp.
+    def enrichment(self, exp, features, max_id=None, **kwargs):
+        '''Get the list of enriched terms in features compared to all other features in exp.
 
         given uneven distribtion of number of terms per feature
 
         Parameters
         ----------
         exp : calour.Experiment
-            The experiment to compare the features to
+            The experiment to compare the features to.
+            NOTE: exp must contain the
         features : list of str
-            The features (from exp) to test for enrichmnt
+            The features (from exp) to test for enrichmnt (comapred to the other features in exp)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+
+        **kwargs: additional parameters supplied to db_access.term_enrichment(). These include:
         term_type : str or None (optional)
             The type of annotation data to test for enrichment
             options are:
@@ -463,7 +473,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
-        ignore_exp: list of int or None or True(optional)
+        ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
@@ -482,6 +492,8 @@ class DBBact(Database):
             int to specify the random seed for numpy.random.
         use_term_pairs: bool, optional
             True to also test enrichment in pairs of terms (i.e. homo sapiens+feces, etc.)
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all the terms in focus_terms
 
         Returns
         -------
@@ -495,6 +507,9 @@ class DBBact(Database):
             frac_group2 : fraction of total terms in group 2 which are the specific term (float)
             num_group1 : number of total terms in group 1 which are the specific term (float)
             num_group2 : number of total terms in group 2 which are the specific term (float)
+            num_enriched_exps: number of experiments where the term is significantly enriched
+            num_enriched_annotations: number of annotations where the term is significantly enriched
+            num_total_exps: number of experiments with this annotation in the term annotations list
             description : the term (str)
         numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
             for term in feature
@@ -513,7 +528,7 @@ class DBBact(Database):
 
         # add all annotations to experiment if not already added
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
 
         ignore_exp = kwargs.get('ignore_exp')
         # if ignore exp is True, it means we should ignore the current experiment
@@ -547,7 +562,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
-        ignore_exp: list of int or None or True(optional)
+        ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
@@ -616,7 +631,7 @@ class DBBact(Database):
         newexp = newexp.sort_by_metadata(field='expid', axis='f')
         newexp.plot(feature_field='annotation', gui='qt5', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=False)
 
-    def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', **kwargs):
+    def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', max_id=None, **kwargs):
         '''
         Plot a heatmap for all annotations containing term in experiment
         Rows are the annotations, columns are the sequences (sorted by features/group2_features)
@@ -633,6 +648,8 @@ class DBBact(Database):
             name for group1/ group2 (for the plot)
         **kwargs:
             passed to calour.plot() (i.e. gui='qt5', etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
         Returns
         -------
@@ -646,7 +663,7 @@ class DBBact(Database):
         all_seqs = list(features.copy())
         all_seqs.extend(list(group2_features))
         if '__dbbact_sequence_annotations' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
         tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
@@ -873,9 +890,9 @@ class DBBact(Database):
             if not None, clip term circle size to max_size.
             Used to make cases where term has lots of sequences nicer.
             NOTE: it changes the circle size and number!
-        ignore_exp: list of int or True (optional)
-            List of experiment ids to ignore in the analysis
-            True to ignore annotations from the current experiment (exp)
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
         '''
         import matplotlib.pyplot as plt
@@ -1064,7 +1081,7 @@ class DBBact(Database):
             all_figures.append(f)
         return all_figures
 
-    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1, use_term_pairs=False):
+    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1, use_term_pairs=False, max_id=None):
         '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
@@ -1089,7 +1106,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
-        ignore_exp: list of int or None or True(optional)
+        ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
@@ -1114,6 +1131,8 @@ class DBBact(Database):
             the FDR level desired (0.1 means up to 10% of results can be due to null hypothesis)
         Use_term_pairs: bool, optional
             True to get all term pair annotations (i.e. human+feces etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
         Returns
         -------
@@ -1138,7 +1157,7 @@ class DBBact(Database):
 
         # add all annotations to experiment if not already added
         if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+            self.add_all_annotations_to_exp(exp, max_id=max_id)
 
         # if ignore exp is True, it means we should ignore the current experiment
         if ignore_exp is True:
@@ -1216,7 +1235,7 @@ class DBBact(Database):
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
-    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False):
+    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
         '''Draw a word_cloud for a given set of sequences
 
         Parameters
@@ -1227,18 +1246,32 @@ class DBBact(Database):
         features: list of str or None, optional
             None to use the features from exp. Otherwise, a list of features ('ACGT' sequences) that is a subset of the features in exp (if exp is supplied)
             Note: if exp is None, must provide features.
-        type: str, optional
+        term_type: str, optional
             What score to use for the word cloud. Options are:
             'recall': sizes are based on the recall (fraction of dbbact term containing annotations that contain the sequences)
             'precision': sizes are based on the precision (fraction of sequence annotations of the experiment sequences that contain the term)
             'fscore': a combination of recall and precition (r*p / (r+p))
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment (if exp is supplied)
+            None (default) to use annotations from all experiments including the current one
         width, height: int, optional
             The width and heigh of the figure (high values are slower but nicer resolution for publication)
             If inside a jupyter notebook, use savefig(f, dpi=600)
         freq_weighted: bool, optional
-            Onlywhen supplying exp
+            Only when supplying exp
             True to weight each bacteria by it's mean frequency in exp.data
             NOT IMPLEMENTED YET!!!
+        relative_scaling: float, optional
+            the effect of the score on the word size. 0.5 is a good compromise (passed to wordcloud.Wordcloud())
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all terms in focus_terms list.
+            for example, if focus_terms=['homo sapiens', 'feces'], will only draw the wordcloud for annotations of human feces
+        threshold: float or None, optional
+            if not None, show in word cloud only terms with p-value <= threshold (using the null model of binomial with term freq. as observed in all dbbact)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+
 
         Returns
         -------
@@ -1255,7 +1288,7 @@ class DBBact(Database):
         if exp is not None:
             if '__dbbact_sequence_terms' not in exp.exp_metadata:
                 # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp)
+                self.add_all_annotations_to_exp(exp, max_id=max_id)
             # and filter only the ones relevant for features
             sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
             sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
@@ -1268,16 +1301,44 @@ class DBBact(Database):
                 raise ValueError('Must supply experiment or features to use for wordcloud')
             sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features)
 
+        # filter based on focus_terms
+        if focus_terms is not None:
+            focus_terms = set(focus_terms)
+            ok_annotations = {}
+            for cid, cannotation in annotations.items():
+                # check if an
+                found_terms = set()
+                for cdetail in cannotation['details']:
+                    if cdetail[1] in focus_terms:
+                        found_terms.add(cdetail[1])
+                if len(found_terms) == len(focus_terms):
+                    ok_annotations[cid] = cannotation
+            logger.info('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
+            print('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
+            for k, v in sequence_annotations.items():
+                nv = [x for x in v if x in ok_annotations]
+                sequence_annotations[k] = nv
+
         # change the sequence annotations from dict to list of tuples
         sequence_annotations = [(k, v) for k, v in sequence_annotations.items()]
 
-        # calculate the recall, precision, fscore for each term
+        # set the experiments to ignore in the wordcloud
+        if ignore_exp is True:
+            if exp is None:
+                raise ValueError('Cannot use ignore_exp=True when exp is not supplied')
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         if ignore_exp is None:
             ignore_exp = []
+
         # we need to rekey the annotations with an str (old problem...)
         annotations = {str(k): v for k, v in annotations.items()}
 
-        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info)
+        # calculate the recall, precision, fscore for each term
+        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
 
         logger.debug('draw_cloud for %d words' % len(fscores))
         if len(fscores) == 0:
@@ -1308,7 +1369,7 @@ class DBBact(Database):
                 new_scores[ckey] = score[ckey] / maxval
         score = new_scores
 
-        wc = WordCloud(width=width, height=height, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
+        wc = WordCloud(width=width, height=height, background_color="white", relative_scaling=relative_scaling, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=score, recall=recall, precision=precision, term_count=term_count))
         # wc = WordCloud(width=400 * 3, height=200 * 3, background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
         # else:
         #     wc = WordCloud(background_color="white", relative_scaling=0.5, stopwords=set(), color_func=lambda *x, **y: _get_color(*x, **y, fscore=fscores, recall=recall, precision=precision, term_count=term_count))
