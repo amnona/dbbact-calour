@@ -83,19 +83,22 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 		# fscore[cterm] = np.sqrt(crecall + cprecision)
 
 	# create the reduced f-scores that contain each term only once (for term pairs)
-	zz = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
-	found_items = set()
-	reduced_f = {}
-	for (cterm, cscore) in zz:
-		isok = True
-		for ccterm in cterm.split('+'):
-			if ccterm in found_items:
-				isok = False
-				continue
-		if isok:
-			reduced_f[cterm] = cscore
+	if 'pairs' in term_types:
+		zz = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
+		found_items = set()
+		reduced_f = {}
+		for (cterm, cscore) in zz:
+			isok = True
 			for ccterm in cterm.split('+'):
-				found_items.add(ccterm)
+				if ccterm in found_items:
+					isok = False
+					continue
+			if isok:
+				reduced_f[cterm] = cscore
+				for ccterm in cterm.split('+'):
+					found_items.add(ccterm)
+	else:
+		reduced_f = fscore.copy()
 
 	if threshold is not None:
 		# filter away non-significant terms
@@ -106,7 +109,8 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 				recall.pop(cterm)
 				precision.pop(cterm)
 				term_count.pop(cterm)
-				reduced_f.pop(cterm)
+				if cterm in reduced_f:
+					reduced_f.pop(cterm)
 
 	return fscore, recall, precision, term_count, reduced_f
 

@@ -872,7 +872,7 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), max_size=None, ignore_exp=[]):
+    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), max_size=None, ignore_exp=[], max_id=None):
         '''Plot a venn diagram for all sequences appearing in any annotation containing the term, and intersect with both groups of bacteria
 
         Parameters
@@ -894,6 +894,8 @@ class DBBact(Database):
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
         '''
         import matplotlib.pyplot as plt
         try:
@@ -955,7 +957,7 @@ class DBBact(Database):
         terms = new_terms
 
         # get the sequence ids that have these terms
-        termids = set(self.db.get_db_term_features(terms, ignore_exp=ignore_exp))
+        termids = set(self.db.get_db_term_features(terms, ignore_exp=ignore_exp, max_id=max_id))
 
         og1 = len(termids.intersection(g1ids))
         og2 = len(termids.intersection(g2ids))

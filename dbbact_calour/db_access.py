@@ -712,7 +712,7 @@ class DBAccess():
             logger.debug('Finished adding experiment id %d annotationid %d' % (expid, newid))
             return newid
         logger.warn('problem adding annotations for experiment id %d' % expid)
-        logger.debug(res.content)
+        logger.warn(res.content)
         return None
 
     def get_seq_list_fast_annotations(self, sequences, get_taxonomy=False, get_parents=False, get_term_info=True, max_id=None):
@@ -1598,7 +1598,7 @@ class DBAccess():
                 logger.warn('failed for term %s' % cterm)
         return term_dist
 
-    def get_db_term_features(self, terms, ignore_exp=()):
+    def get_db_term_features(self, terms, ignore_exp=(), max_id=None):
         '''Get all the features associated with a term in the database
 
         Parameters
@@ -1629,10 +1629,15 @@ class DBAccess():
         # get features only for annotations which don't contain "lower in " for one of the terms
         terms_set = set(terms)
         feature_num = defaultdict(int)
+        num_ignored_annotations = 0
         for cannotation in annotations:
             # if annotation is from an experiment we are ignoring, skip it
             if cannotation['expid'] in ignore_exp:
                 continue
+            if max_id is not None:
+                if cannotation['annotationid'] > max_id:
+                    num_ignored_annotations += 1
+                    continue
             foundit = set()
             for cdetail in cannotation['details']:
                 if cdetail[1] not in terms_set:
@@ -1649,6 +1654,8 @@ class DBAccess():
             seqs = self.get_annotation_sequences(cannotation['annotationid'])
             for cseq in seqs:
                 feature_num[cseq] += 1
+        if max_id is not None:
+            logger.info('ignored %d annotations' % num_ignored_annotations)
         return feature_num
 
     def get_sequences_ids(self, sequences, no_shorter=False, no_longer=False):
