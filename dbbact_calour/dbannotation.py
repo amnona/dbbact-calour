@@ -96,7 +96,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
                  'also, please supply as many terms as possible (host, material, country, disease, etc.)',
                  keyval='annotation_info')
 
-    ui = DBAnnotateSave(seqs, exp, dbclass=dbclass)
+    ui = DBAnnotateSave(seqs, exp, dbclass=dbclass, get_seq_region=True)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
         description = str(ui.bdescription.text())
@@ -460,7 +460,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
     _ontology_dbbact = None
     _ontology_dbbact_max_id = 0
 
-    def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None):
+    def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None, get_seq_region=False):
         '''Create the manual annotation window
 
         Parameters
@@ -474,6 +474,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
             dict to pre-fill using dict fields instead
         dbclass: dbbact or None, optional
             the dbBact database to interact with (used to get the primer regions possible)
+        get_seq_region: bool, optional
+            if True, query dbbact for the sequences region if needed (i.e. no history) and prefill the region (i.e. 'v4')
 
         '''
         super(DBAnnotateSave, self).__init__()
@@ -511,8 +513,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
         self.setWindowTitle(expdat.description)
 
-        # set the default primer id for the annotation sequences
-        self.primerid = 'V4'
+        self.primerid = None
 
         if prefill_annotation is None:
             # try to autofill from history if experiment annotated
@@ -525,8 +526,17 @@ class DBAnnotateSave(QtWidgets.QDialog):
             logger.debug('Filling annotation details from supplied annotation')
             self.fill_from_annotation(prefill_annotation, onlyall=False)
 
+        # set the default primer id for the annotation sequences
+        if get_seq_region:
+            if self.primerid is None:
+                if dbclass is not None:
+                    self.primerid = dbclass.db.get_sequences_primer(selected_features)
+
         # set the primer region button label to the region
-        self.bhistory.setText(self.primerid)
+        if self.primerid is not None:
+            self.bhistory.setText(self.primerid)
+        else:
+            self.bhistory.setText('Select Region')
 
         # self.prefillinfo()
         self.bontoinput.setFocus()
@@ -808,6 +818,11 @@ class DBAnnotateSave(QtWidgets.QDialog):
             cdat = qtlistgetdata(citem)
             ctype = cdat['type'].lower()
             types.add(ctype)
+
+        # check we chose a primer region
+        if self.primerid is None:
+            msg = 'Please select primer region for annotation'
+            return msg
 
         # if differential expression, check there is high and low
         if self.bdiffpres.isChecked():

@@ -1882,3 +1882,25 @@ class DBAccess():
             logger.debug('Found %d enriched annotations, %d enriched experiments for term %s' % (len(keep), len(enriched_experiments), term))
 
         return enriched_experiments, enriched_annotations, total_exp_annotations
+
+    def get_sequences_primer(self, sequences):
+        '''Get the primer name for the sequences
+
+        Parameters
+        ----------
+        sequences: list of str
+            the sequences to get the primer region for (from dbbact))
+
+        Returns
+        -------
+        primer_name: str
+            name of the primer region (i.e. 'v4')
+        '''
+        rdata = {}
+        rdata['sequences'] = sequences
+        res = self._get('sequences/guess_region', rdata)
+        if res.status_code != 200:
+            logger.warn('error getting sequences for sequences: %s' % res.content)
+            return None
+        res = res.json()
+        return res['region']
