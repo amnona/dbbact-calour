@@ -139,10 +139,11 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
             return msg
 
         logger.debug('Adding annotation to studyid %s' % cdata)
-        res = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
-        if res is None:
-            msg = 'Annotation not added.'
+        err, res = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
+        if err:
+            msg = 'Annotation not added. error: %s' % err
             logger.warn(msg)
+            QtWidgets.QMessageBox.warning(None, 'Annotation not added', msg)
             return msg
         logger.debug('New annotation added. AnnotationId=%d' % res)
 

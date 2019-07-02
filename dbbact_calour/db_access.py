@@ -683,16 +683,20 @@ class DBAccess():
 
         Returns
         -------
+        err: str
+            if not empty (''), error enoucntered during adding annotation, annotation was not added
         annotationid : int or None
             the AnnotationID (in Annotations table) of the new annotation, or None if not added
         """
         logger.debug('addannotation - %d sequences' % len(sequences))
         if len(sequences) == 0:
-            logger.warn('No sequences to annotate!')
-            return None
+            msg = 'No sequences to annotate!'
+            logger.warn(msg)
+            return msg, None
         if len(annotations) == 0:
-            logger.warn('No annotations to add!')
-            return None
+            msg = 'No annotations to add!'
+            logger.warn(msg)
+            return msg, None
 
         # add the annotation
         rdata = {}
@@ -710,10 +714,10 @@ class DBAccess():
         if res.status_code == 200:
             newid = res.json()['annotationId']
             logger.debug('Finished adding experiment id %d annotationid %d' % (expid, newid))
-            return newid
+            return '', newid
         logger.warn('problem adding annotations for experiment id %d' % expid)
         logger.warn(res.content)
-        return None
+        return res.content, None
 
     def get_seq_list_fast_annotations(self, sequences, get_taxonomy=False, get_parents=False, get_term_info=True, max_id=None):
         '''Get annotations for all sequences in list using compact format and with parent ontology terms
