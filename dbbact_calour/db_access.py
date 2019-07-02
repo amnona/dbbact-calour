@@ -141,6 +141,8 @@ class DBAccess():
                 'fprimer': str
                 'rprimer: str
                     name of the forward and reverse primers for the region (i.e. 515f, etc.)}
+                'fprimerseq': str
+                    the forward primer concensus sequence
         '''
         res = self._get('sequences/get_primers', rdata={})
         return res.json()['primers']

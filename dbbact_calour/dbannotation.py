@@ -692,7 +692,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
     def select_primers(self, dbclass=None):
         primer_info = dbclass.db.get_primers()
-        primers = ['%s (%s-%s)' % (cpi['name'], cpi['fprimer'], cpi['rprimer']) for cpi in primer_info]
+        primers = ['%s (%s:%s - %s)' % (cpi['name'], cpi['fprimer'], cpi['fprimerseq'], cpi['rprimer']) for cpi in primer_info]
         listwin = SListWindow(primers, listname='Select region')
         res = listwin.exec_()
         if res == QtWidgets.QDialog.Accepted:
