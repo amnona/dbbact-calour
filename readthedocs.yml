@@ -22,7 +22,7 @@ python:
   install:
     - requirements: docs/requirements.txt
     - method: pip
-        path: .
+      path: .
 # conda:
     # environment: doc_conda_environment.yml
 
