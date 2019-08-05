@@ -1903,4 +1903,7 @@ class DBAccess():
             logger.warn('error getting sequences for sequences: %s' % res.content)
             return None
         res = res.json()
+        if res['region'] == 'na':
+            # force user to select
+            return None
         return res['region']

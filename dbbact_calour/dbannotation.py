@@ -661,8 +661,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
             self.bdescription.setText(annotation['description'])
         if 'method' in annotation:
             self.bmethod.setText(annotation['method'])
-        if 'primerid' in annotation:
-            self.primerid = annotation['primerid']
+        if 'primer' in annotation:
+            self.primerid = annotation['primer']
         # activate the appropriate annotation type buttons
         if 'annotationtype' in annotation:
             atype = annotation['annotationtype'].lower()

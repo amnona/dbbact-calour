@@ -974,7 +974,7 @@ class DBBact(Database):
 
         if max_size is not None:
             if vvals['001'] > max_size:
-                print('WARNING: clipped term circle size to %d. Real size (number of term seqs) should be: %d' % (max_size, len(termids)))
+                print('WARNING: clipped term circle size to %d. Real size (number of term seqs not overlapping) should be: %d' % (max_size, len(termids) - og1 - og2))
                 vvals['001'] = max_size
 
         # for k, v in vvals.items():
