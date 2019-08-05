@@ -22,8 +22,8 @@ python:
   install:
     - requirements: docs/requirements.txt
 
-conda:
-    environment: doc_conda_environment.yml
+# conda:
+    # environment: doc_conda_environment.yml
 
 # python:
 #     version: 3.5

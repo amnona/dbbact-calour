@@ -1,17 +1,5 @@
-numpy
-scipy
-pyqt5
-pandas
 matplotlib
-h5py
-scikit-learn
-statsmodels
-ipywidgets
 sphinx
 sphinx_bootstrap_theme
-coveralls
 sphinx-autodoc-typehints
 docrep
-scikit-bio>=0.5.1
-biom-format
-calour
