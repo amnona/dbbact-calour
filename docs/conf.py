@@ -6,9 +6,6 @@ import sys
 import os
 import re
 
-# Force matplotlib to not use any Xwindows backend.
-import matplotlib
-matplotlib.use('Agg')
 
 import sphinx
 import sphinx.ext.autosummary as autosummary
@@ -107,23 +104,6 @@ extensions = [
     'IPython.sphinxext.ipython_console_highlighting'
 ]
 
-# Determine if the matplotlib has a recent enough version of the
-# plot_directive.
-
-try:
-    from matplotlib.sphinxext import plot_directive
-except ImportError:
-    use_matplotlib_plot_directive = False
-else:
-    try:
-        use_matplotlib_plot_directive = (plot_directive.__version__ >= 2)
-    except AttributeError:
-        use_matplotlib_plot_directive = False
-
-if use_matplotlib_plot_directive:
-    extensions.append('matplotlib.sphinxext.plot_directive')
-else:
-    raise RuntimeError("You need a recent enough version of matplotlib")
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -425,8 +405,6 @@ plot_rcparams = {
     # of 'standard' fixes the issue. See http://stackoverflow.com/a/10154763
     'savefig.bbox': 'tight'
 }
-
-matplotlib.rcParams.update(plot_rcparams)
 
 # -----------------------------------------------------------------------------
 # Intersphinx configuration
