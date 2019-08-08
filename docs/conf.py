@@ -4,17 +4,18 @@
 # list see the documentation:
 # http://www.sphinx-doc.org/en/master/config
 
+import sphinx.ext.autosummary as autosummary
+import sphinx_bootstrap_theme
+
 # -- Path setup --------------------------------------------------------------
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
-import sphinx.ext.autosummary as autosummary
-import sphinx_bootstrap_theme
+import os
+import sys
+sys.path.insert(0, os.path.abspath('..'))
 
 # ignore lots of module imports to make readthedocs environment
 autodoc_mock_imports = ['numpy', 'scipy', 'pandas', 'calour', 'statsmodels', 'sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
