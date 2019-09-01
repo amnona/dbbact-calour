@@ -147,13 +147,15 @@ class DBAccess():
         res = self._get('sequences/get_primers', rdata={})
         return res.json()['primers']
 
-    def get_seq_annotations(self, sequence):
+    def get_seq_annotations(self, sequence, max_id=None):
         '''Get the annotations for a sequence
 
         Parameters
         ----------
         sequence : str
             The DNA sequence to get the annotations for
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
         Returns
         -------
@@ -174,6 +176,9 @@ class DBAccess():
             return []
         res = res.json()
         annotations = res.get('annotations')
+        if max_id is not None:
+            annotations = [x for x in annotations if x['annotationid'] <= max_id]
+
         term_info = res.get('term_info')
         taxonomy = res.get('taxonomy')
         logger.debug('Found %d annotations for sequence %s' % (len(annotations), sequence))
@@ -230,13 +235,18 @@ class DBAccess():
                 cdesc = cdesc + ' ' + cdet[1] + ','
         return cdesc
 
-    def get_seq_annotation_strings(self, sequence):
+    def get_seq_annotation_strings(self, sequence, max_id=None, get_summary=True):
         '''Get nice string summaries of annotations for a given sequence
 
         Parameters
         ----------
         sequence : str
             the DNA sequence to query the annotation strings about
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+        get_summary: bool, optional
+            True (default) to get summary of all annotations in the first 3 results of the function (see output details)
+            False to just get the annotations
 
         Returns
         -------
@@ -248,32 +258,37 @@ class DBAccess():
                     ...
                 annotationsummary : str
                     a short text summary of the annotation
+            NOTE: if get_summary=True, the first 3 descriptions are a summary of all the annotations. they include:
+            shortdesc[0] - taxonomy for the sequence
+            shortdesc[1] - 5 highest f-score terms for the sequence
+            shortdesc[2] - 5 highest precision
         '''
         shortdesc = []
-        annotations, term_info, taxonomy = self.get_seq_annotations(sequence)
-        if taxonomy is None:
-            taxonomy = 'taxonomy not availble'
-        elif len(taxonomy) == 0:
-            taxonomy = 'Taxonomy not available'
-        shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, taxonomy))
-        if len(term_info) > 0:
-            # terms = []
-            # for cterm, cinfo in term_info.items():
-            #     terms.append([cterm, 42, cinfo.get('total_annotations')])
-            #     # terms.append([cterm, cinfo.get('total_sequences'), cinfo.get('total_annotations')])
-            # terms = sorted(terms, key=lambda x: x[1])
-            # terms = sorted(terms, key=lambda x: -x[2])
+        annotations, term_info, taxonomy = self.get_seq_annotations(sequence, max_id=max_id)
+        if get_summary:
+            if taxonomy is None:
+                taxonomy = 'taxonomy not availble'
+            elif len(taxonomy) == 0:
+                taxonomy = 'Taxonomy not available'
+            shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, taxonomy))
+            if len(term_info) > 0:
+                # terms = []
+                # for cterm, cinfo in term_info.items():
+                #     terms.append([cterm, 42, cinfo.get('total_annotations')])
+                #     # terms.append([cterm, cinfo.get('total_sequences'), cinfo.get('total_annotations')])
+                # terms = sorted(terms, key=lambda x: x[1])
+                # terms = sorted(terms, key=lambda x: -x[2])
 
-            # get the most f-score terms (i.e. most identifying this feature)
-            summary = 'most: '
-            most_terms, prec_terms = self.get_common_annotation_term(annotations, term_info, num_common=5)
-            for cmterm in most_terms:
-                summary += cmterm + ', '
-            shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
-            summary = 'special: '
-            for cmterm in prec_terms:
-                summary += cmterm + ', '
-            shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
+                # get the most f-score terms (i.e. most identifying this feature)
+                summary = 'most: '
+                most_terms, prec_terms = self.get_common_annotation_term(annotations, term_info, num_common=5)
+                for cmterm in most_terms:
+                    summary += cmterm + ', '
+                shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
+                summary = 'special: '
+                for cmterm in prec_terms:
+                    summary += cmterm + ', '
+                shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
 
             # # get the most f-score terms (i.e. most identifying this feature)
             # summary = 'most: '
@@ -491,7 +506,7 @@ class DBAccess():
         term_info : dict (key is term, value is dict)
             information about each term (total_sequences, total_annotations)
         num_common : int (optional)
-            The number of common terms to return
+            The number of common terms to return. if 0, return all
 
         Returns
         -------
@@ -506,7 +521,10 @@ class DBAccess():
         fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations_dict, [(1, list(annotations_dict.keys()))], term_info=term_info)
         sorted_by_f = sorted(fscore, key=fscore.get, reverse=True)
         sorted_by_prec = sorted(precision, key=precision.get, reverse=True)
-        return(sorted_by_f[:num_common], sorted_by_prec[:num_common])
+        if num_common > 0:
+            sorted_by_f = sorted_by_f[:num_common]
+            sorted_by_prec = sorted_by_prec[:num_common]
+        return(sorted_by_f, sorted_by_prec)
 
     def find_experiment_id(self, datamd5='', mapmd5='', getall=False):
         """

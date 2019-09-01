@@ -28,6 +28,7 @@ Functions
    DBBact.plot_term_venn_all
    DBBact.sample_enrichment
    DBBact.draw_wordcloud
+   DBBact.get_enrichment_score
 '''
 
 from collections import defaultdict
@@ -110,6 +111,33 @@ class DBBact(Database):
         return __version_numeric__
 
     def get_seq_annotation_strings(self, *kargs, **kwargs):
+        '''Get a list of strings describing the sequence annotations, and the annotations details
+
+        Parameters
+        ----------
+        sequence : str
+            the DNA sequence to query the annotation strings about
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+        get_summary: bool, optional
+            True (default) to get summary of all annotations in the first 3 results of the function (see output details)
+            False to just get the annotations
+
+        Returns
+        -------
+        shortdesc : list of (dict,str) (annotationdetails,annotationsummary)
+            a list of:
+                annotationdetails : dict
+                    'annotationid' : int, the annotation id in the database
+                    'annotationtype : str
+                    ...
+                annotationsummary : str
+                    a short text summary of the annotation
+            NOTE: if get_summary=True, the first 3 descriptions are a summary of all the annotations. they include:
+            shortdesc[0] - taxonomy for the sequence
+            shortdesc[1] - 5 highest f-score terms for the sequence
+            shortdesc[2] - 5 highest precision
+        '''
         return self.db.get_seq_annotation_strings(*kargs, **kwargs)
 
     def delete_annotation(self, *kargs, **kwargs):
@@ -1413,6 +1441,35 @@ class DBBact(Database):
         plt.axis("off")
         fig.tight_layout()
         return fig
+
+    def get_enrichment_score(self, *kargs, **kwargs):
+        '''Get f score, recall and precision for set of annotations
+
+        Parameters
+        ----------
+        annotations: dict of {annotationid (str): annotation(dict)}
+        seqannotations: list of (seqid, [annotation ids])
+        ingore_exp: list of str, optional
+            list of experiment ids to ignore in the analysis
+        term_info: dict of {term (str): details {"total_annotations": float, "total_sequences": float}} (see dbbact rest-api /ontology/get_term_stats) or None, optional
+            The statistics about each term. if None, the function will contact dbbact to get the term_info
+        term_types: list of str
+            the terms to calculate enrichment scores for. options are:
+            'single': each single term (i.e. 'feces')
+            'pairs': all term pairs (i.e. 'feces+homo sapiens')
+        threshold: float or None, optional
+            if not None, return only terms that are significantly enriched in the annotations compared to complete database null with p-val <= threshold
+
+        Returns
+        -------
+        fscore: dict of {term(str): fscore(float)}
+        recall: dict of {term(str): recall(float)}
+        precision: dict of {term(str): precision(float)}
+        term_count: dict of {term(str): total experiments(float)}
+            the number of experiments where annotations for each term appear
+        reduced_f
+        '''
+        return get_enrichment_score(*kargs, **kwargs)
 
 
 def _get_color(word, font_size, position, orientation, font_path, random_state, fscore, recall, precision, term_count):
