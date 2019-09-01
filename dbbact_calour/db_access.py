@@ -141,6 +141,8 @@ class DBAccess():
                 'fprimer': str
                 'rprimer: str
                     name of the forward and reverse primers for the region (i.e. 515f, etc.)}
+                'fprimerseq': str
+                    the forward primer concensus sequence
         '''
         res = self._get('sequences/get_primers', rdata={})
         return res.json()['primers']
@@ -683,16 +685,20 @@ class DBAccess():
 
         Returns
         -------
+        err: str
+            if not empty (''), error enoucntered during adding annotation, annotation was not added
         annotationid : int or None
             the AnnotationID (in Annotations table) of the new annotation, or None if not added
         """
         logger.debug('addannotation - %d sequences' % len(sequences))
         if len(sequences) == 0:
-            logger.warn('No sequences to annotate!')
-            return None
+            msg = 'No sequences to annotate!'
+            logger.warn(msg)
+            return msg, None
         if len(annotations) == 0:
-            logger.warn('No annotations to add!')
-            return None
+            msg = 'No annotations to add!'
+            logger.warn(msg)
+            return msg, None
 
         # add the annotation
         rdata = {}
@@ -710,12 +716,12 @@ class DBAccess():
         if res.status_code == 200:
             newid = res.json()['annotationId']
             logger.debug('Finished adding experiment id %d annotationid %d' % (expid, newid))
-            return newid
+            return '', newid
         logger.warn('problem adding annotations for experiment id %d' % expid)
-        logger.debug(res.content)
-        return None
+        logger.warn(res.content)
+        return res.content, None
 
-    def get_seq_list_fast_annotations(self, sequences, get_taxonomy=False, get_parents=False, get_term_info=True):
+    def get_seq_list_fast_annotations(self, sequences, get_taxonomy=False, get_parents=False, get_term_info=True, max_id=None):
         '''Get annotations for all sequences in list using compact format and with parent ontology terms
 
         Params
@@ -728,6 +734,8 @@ class DBAccess():
             True to get all ontology parents for each annotation term.
         get_term_info: bool, optional
             True to get total annotation/experiments for each term appearing in the annotations
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
 
         Returns
         -------
@@ -769,7 +777,12 @@ class DBAccess():
             cpos = cseqannotation[0]
             # need str since json dict is always string
             cseq = sequences[cpos]
-            sequence_annotations[cseq].extend(cseqannotation[1])
+
+            seq_annotation_ids = cseqannotation[1]
+            # remove sequence annotations for annotations > max_id
+            if max_id is not None:
+                seq_annotation_ids = [x for x in seq_annotation_ids if int(x) <= max_id]
+            sequence_annotations[cseq].extend(seq_annotation_ids)
             for cannotation in cseqannotation[1]:
                 for k, v in res['annotations'][str(cannotation)]['parents'].items():
                     if k == 'high' or k == 'all':
@@ -784,6 +797,16 @@ class DBAccess():
         keys = list(annotations.keys())
         for cid in keys:
             annotations[int(cid)] = annotations.pop(cid)
+
+        # remove the annotations with id > max_id
+        if max_id is not None:
+            ignored = 0
+            keys = list(annotations.keys())
+            for cid in keys:
+                if cid > max_id:
+                    annotations.pop(cid)
+                    ignored += 1
+            logger.warning('ignoring %d annotation with id > max_id %d' % (ignored, max_id))
 
         total_annotations = 0
         for cseq_annotations in sequence_annotations.values():
@@ -1070,7 +1093,7 @@ class DBAccess():
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
-    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0):
+    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1123,7 +1146,8 @@ class DBAccess():
             if min_appearances supplied, use this to speed up calculation by looking at terms in sorted (effect size) order until num_results_needed are met at each end
             0 to calculate for all
             NOTE: using this keeps only num_results_needed significant terms!
-
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all the terms in focus_terms
 
         Returns
         -------
@@ -1153,6 +1177,21 @@ class DBAccess():
         g1_features = np.array(g1_features)
         g2_features = np.array(g2_features)
         exp_features = np.hstack([g1_features, g2_features])
+
+        # filter keeping only annotations containing focus_terms (if not None)
+        if focus_terms is not None:
+            focus_terms = set(focus_terms)
+            ok_annotations = set()
+            for cid, cannotation in all_annotations.items():
+                found_terms = set()
+                for cdetail in cannotation['details']:
+                    if cdetail[1] in focus_terms:
+                        found_terms.add(cdetail[1])
+                if len(found_terms) == len(focus_terms):
+                    ok_annotations[cid] = cannotation
+            for k, v in seq_annotations.items():
+                nv = [x for x in v if x in ok_annotations]
+                seq_annotations[k] = nv
 
         # Get the feature_terms dict according to the scoring method
         # dict of {feature:str, list of tuples of (term:str, score:float)}, key is feature, value is list of (term, score)
@@ -1565,7 +1604,7 @@ class DBAccess():
                 logger.warn('failed for term %s' % cterm)
         return term_dist
 
-    def get_db_term_features(self, terms, ignore_exp=()):
+    def get_db_term_features(self, terms, ignore_exp=(), max_id=None):
         '''Get all the features associated with a term in the database
 
         Parameters
@@ -1596,10 +1635,15 @@ class DBAccess():
         # get features only for annotations which don't contain "lower in " for one of the terms
         terms_set = set(terms)
         feature_num = defaultdict(int)
+        num_ignored_annotations = 0
         for cannotation in annotations:
             # if annotation is from an experiment we are ignoring, skip it
             if cannotation['expid'] in ignore_exp:
                 continue
+            if max_id is not None:
+                if cannotation['annotationid'] > max_id:
+                    num_ignored_annotations += 1
+                    continue
             foundit = set()
             for cdetail in cannotation['details']:
                 if cdetail[1] not in terms_set:
@@ -1616,9 +1660,11 @@ class DBAccess():
             seqs = self.get_annotation_sequences(cannotation['annotationid'])
             for cseq in seqs:
                 feature_num[cseq] += 1
+        if max_id is not None:
+            logger.info('ignored %d annotations' % num_ignored_annotations)
         return feature_num
 
-    def get_sequences_ids(self, sequences, no_shorter=False, no_longer=False):
+    def get_sequences_ids(self, sequences, no_shorter=False, no_longer=False, use_sequence_translator=True):
         '''Get the dbbact IDs for a list of ACGT sequences
 
         Parameters
@@ -1629,7 +1675,8 @@ class DBAccess():
             True to not get sequences shorter than the query sequence (but match 100%)
         no_longer: bool, optional
             True to not get sequences that are longer than the query sequence (but match 100%)
-
+        use_sequence_translator: bool, optional
+            True to use also sequences from other regions (using SILVA sequence translator)
         Returns
         -------
         list of list of int
@@ -1638,6 +1685,7 @@ class DBAccess():
         rdata = {}
         rdata['no_shorter'] = no_shorter
         rdata['no_longer'] = no_longer
+        rdata['use_sequence_translator'] = use_sequence_translator
         rdata['sequences'] = sequences
         res = self._get('sequences/getid_list', rdata)
         if res.status_code != 200:
@@ -1836,3 +1884,28 @@ class DBAccess():
             logger.debug('Found %d enriched annotations, %d enriched experiments for term %s' % (len(keep), len(enriched_experiments), term))
 
         return enriched_experiments, enriched_annotations, total_exp_annotations
+
+    def get_sequences_primer(self, sequences):
+        '''Get the primer name for the sequences
+
+        Parameters
+        ----------
+        sequences: list of str
+            the sequences to get the primer region for (from dbbact))
+
+        Returns
+        -------
+        primer_name: str
+            name of the primer region (i.e. 'v4')
+        '''
+        rdata = {}
+        rdata['sequences'] = sequences
+        res = self._get('sequences/guess_region', rdata)
+        if res.status_code != 200:
+            logger.warn('error getting sequences for sequences: %s' % res.content)
+            return None
+        res = res.json()
+        if res['region'] == 'na':
+            # force user to select
+            return None
+        return res['region']
