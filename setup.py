@@ -49,9 +49,10 @@ setup(name='dbbact-calour',
       packages=find_packages(),
       package_data={'dbbact_calour': ['data/*.pickle', 'log.cfg']},
       install_requires=[
-          'pandas',
+          # 'pandas',
           # 'pyqt5',
-          'calour'],
+          # 'calour'
+          ],
       extras_require={'test': ["nose", "pep8", "flake8"],
                       'coverage': ["coverage"],
                       'doc': ["Sphinx >= 1.4"]},
