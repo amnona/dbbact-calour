@@ -76,6 +76,20 @@ class DBAccess():
         self.username = username
         self.password = password
 
+        # check compatibility with dbBact server supported versions
+        res = self._get('docs/get_supported_version', {'client': 'dbbact_calour'})
+        if res is None:
+            logger.warn('Could not validate dbbact_calour_version')
+            return
+        if 'min_version' in res:
+            if res['min_version'] > self.version():
+                logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
+                return
+        if 'current_version' in res:
+            if res['current_version'] > self.version():
+                logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
+                logger.warn('(Current dbbact_calour version: %s)' % self.version())
+
     def version(self):
         return __version_numeric__
 
@@ -1414,7 +1428,7 @@ class DBAccess():
             # for idx, cterm in enumerate(term_list):
             #     term_list[idx] = term_list[idx] + ' [%d/%d]' % (num_enriched_exps[idx], num_total_exps[idx])
 
-        # normalize the effect size to be in the [0:1] range (0 for random, 1 for fully ordered)
+        # normalize the effect size to be in the [-1:1] range (0 for random, -1 / 1 for fully ordered)
         n_g1 = len(g1_features)
         n_g2 = len(g2_features)
         odif = odif / ((((n_g1 + 1) / 2) + n_g2) - ((n_g2 + 1) / 2))
