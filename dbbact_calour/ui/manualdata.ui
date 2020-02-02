@@ -48,22 +48,27 @@
    </item>
    <item>
     <property name="text">
-     <string>Common (&gt;0.5 samples)</string>
+     <string>Common (present in &gt;0.5 samples)</string>
     </property>
    </item>
    <item>
     <property name="text">
-     <string>High freq (&gt;1% reads)</string>
+     <string>Dominant (mean &gt;1% relative freq.)</string>
     </property>
    </item>
+   <item>
+    <property name="text">
+     <string>Positively associated with</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Negatively associated with</string>
+    </property>
+   </item>   
    <item>
     <property name="text">
      <string>Other</string>
-    </property>
-   </item>
-   <item>
-    <property name="text">
-     <string/>
     </property>
    </item>
   </widget>

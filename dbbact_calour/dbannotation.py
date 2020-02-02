@@ -85,7 +85,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
                  'Choose the annotation type. Annotations can be:\n'
                  '"Differential abundance": High in one group compared to the other\n'
                  '"Common": present in majority of the samples (prevalence)\n'
-                 '"High freq.": frequency of the bacteria is >1% (frequency)\n\n'
+                 '"Dominant": frequency of the bacteria is >1% (mean frequency)\n\n'
                  'Then choose the terms (preferably from ontology autocomplete) relevant\n'
                  'Note that for "Differential abundance", you need to choose the terms common to both groups (all),'
                  'the terms in the group where the bacteria is higher (high) and where it is lower (low).\n'
@@ -129,8 +129,12 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
                 annotation_type = 'COMMON'
             elif 'Contam' in curtypeval:
                 annotation_type = 'CONTAMINATION'
-            elif 'High' in curtypeval:
-                annotation_type = 'HIGHFREQ'
+            elif 'Dominant' in curtypeval:
+                annotation_type = 'DOMINANT'
+            elif 'Positively associated' in curtypeval:
+                annotation_type = 'POSITIVE ASSOCIATION'
+            elif 'Negatively associated' in curtypeval:
+                annotation_type = 'NEGATIVE ASSOCIATION'
             else:
                 annotation_type = 'OTHER'
         else:
@@ -195,8 +199,12 @@ def update_annotation_gui(db, annotation, exp):
                 annotation_type = 'COMMON'
             elif 'Contam' in curtypeval:
                 annotation_type = 'CONTAMINATION'
-            elif 'High' in curtypeval:
-                annotation_type = 'HIGHFREQ'
+            elif 'Dominant' in curtypeval:
+                annotation_type = 'DOMINANT'
+            elif 'Positively associated' in curtypeval:
+                annotation_type = 'POSITIVE ASSOCIATION'
+            elif 'Negatively associated' in curtypeval:
+                annotation_type = 'NEGATIVE ASSOCIATION'
             else:
                 annotation_type = 'OTHER'
         else:
@@ -312,8 +320,8 @@ def study_data_ui(cexp):
     show_and_ask('Study is not in database.\n'
                  '(based on data or mapping file md5)\n'
                  'Please supply details that identify the source of the data\n'
-                 'Preferably a dataID (such as sra/qiita/etc)\n'
-                 'and the name of the study',
+                 'Preferably a dataID (such as sra/qiita/etc)'
+                 ', the name of the study (name), and the DOID\n',
                  keyval='study_info')
 
     dbsi = DBStudyInfo(cid, study_details=study_details)
@@ -670,26 +678,42 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 ctypeidx = self.bisatype.findText('Common', Qt.MatchContains)
                 self.bisa.setChecked(True)
                 self.bisatype.setCurrentIndex(ctypeidx)
-            elif atype == 'highfreq':
-                ctypeidx = self.bisatype.findText('high', Qt.MatchContains)
+            elif atype == 'dominant':
+                ctypeidx = self.bisatype.findText('Dominant', Qt.MatchContains)
                 self.bisa.setChecked(True)
                 self.bisatype.setCurrentIndex(ctypeidx)
             elif atype == 'other':
-                ctypeidx = self.bisatype.findText('other', Qt.MatchContains)
+                ctypeidx = self.bisatype.findText('Other', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'positive association':
+                ctypeidx = self.bisatype.findText('Positively associated', Qt.MatchContains)
+                self.bisa.setChecked(True)
+                self.bisatype.setCurrentIndex(ctypeidx)
+            elif atype == 'negative association':
+                ctypeidx = self.bisatype.findText('Negatively associated', Qt.MatchContains)
                 self.bisa.setChecked(True)
                 self.bisatype.setCurrentIndex(ctypeidx)
             elif atype == 'diffexp':
                 self.bdiffpres.setChecked(True)
                 pass
             elif atype == 'contamination':
-                ctypeidx = self.bisatype.findText('contam', Qt.MatchContains)
+                ctypeidx = self.bisatype.findText('Contam', Qt.MatchContains)
                 self.bisa.setChecked(True)
                 self.bisatype.setCurrentIndex(ctypeidx)
+            self.radiotoggle()
 
     def radiotoggle(self):
         if self.bisa.isChecked():
-            self.blow.setDisabled(True)
-            self.bhigh.setDisabled(True)
+            print(self.bisatype.currentText())
+            if 'negatively associated' in self.bisatype.currentText().lower():
+                self.blow.setDisabled(False)
+            else:
+                self.blow.setDisabled(True)
+            if 'positively associated' in self.bisatype.currentText().lower():
+                self.bhigh.setDisabled(False)
+            else:
+                self.bhigh.setDisabled(True)
         if self.bdiffpres.isChecked():
             self.blow.setEnabled(True)
             self.bhigh.setEnabled(True)
@@ -699,6 +723,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         changed the selection of isatype combobox so need to activate the isa radio button
         """
         self.bisa.setChecked(True)
+        self.radiotoggle()
 
     def select_primers(self, dbclass=None):
         primer_info = dbclass.db.get_primers()

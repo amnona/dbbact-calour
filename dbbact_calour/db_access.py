@@ -77,7 +77,7 @@ class DBAccess():
         self.password = password
 
         # check compatibility with dbBact server supported versions
-        res = self._get('docs/get_supported_version', {'client': 'dbbact_calour'})
+        res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
         if res is None:
             logger.warn('Could not validate dbbact_calour_version')
             return
@@ -434,7 +434,7 @@ class DBAccess():
             annotation_type = cannotation['annotationtype']
             if annotation_type == 'common':
                 ascore = 1
-            elif annotation_type == 'highfreq':
+            elif annotation_type == 'dominant':
                 ascore = 2
             elif annotation_type == 'other':
                 ascore = 0.5
@@ -442,6 +442,10 @@ class DBAccess():
                 ascore = 1
                 details = [('all', 'contamination')]
             elif annotation_type == 'diffexp':
+                ascore = 1
+            elif annotation_type == 'positive correlation':
+                ascore = 1
+            elif annotation_type == 'negative correlation':
                 ascore = 1
             else:
                 logger.warn('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
@@ -693,8 +697,10 @@ class DBAccess():
             'COMMON' : the sequences are common in the samples (present in >0.5 of the samples)
             'DIFFEXP' : the sequences are different between two conditions in the samples
             'CONTAM' : the sequences are suspected experimental contaminants
-            'HIGHFREQ' : the sequences are found in mean high frequency (>1%) in the samples
-            'PATHOGEN' : the sequences are known pathogens
+            'DOMINANT' : the sequences are found in mean high frequency (>1%) in the samples
+            'OTHER' : other general observations (i.e. the sequences are known pathogens)
+            'POSITIVE CORRELATION': the phenotype is positively correlated with the sequence (i.e. high growth rate when bacteria is present)
+            'NEGATIVE CORRELATION': the phenotype is negatively correlated with the sequence (i.e. low growth rate when bacteria is present)
         annotations : list of Type, Value
             The annotations to add to the AnnotationsList table (Type,Value).
             Value is the ontology term to add
@@ -1551,10 +1557,10 @@ class DBAccess():
             value at each position is >0 if this feature has this annotation or 0 if not
             the number indicates the annotation type for the detail:
             4 - common
-            8 - high freq.
+            8 - dominant
             5 - all (in diffexp annotations)
-            2 - low (in diffexp annotations)
-            16 - high (in diffexp annotations)
+            2 - low (in diffexp annotations / negative correlation)
+            16 - high (in diffexp annotations / positive correlation)
             32 - other annotation type
         pandas dataframe
             one row per annotation
@@ -1582,7 +1588,7 @@ class DBAccess():
                     annotation_pos = term_annotations.index.get_loc(cannotation_id)
                     if term_annotations['annotation_type'][cannotation_id] == 'common':
                         score = 4
-                    elif term_annotations['annotation_type'][cannotation_id] == 'highfreq':
+                    elif term_annotations['annotation_type'][cannotation_id] == 'dominant':
                         score = 8
                     elif term_annotations['annotation_type'][cannotation_id] == 'diffexp':
                         if term_annotations['detail_type'][cannotation_id] == 'all':
