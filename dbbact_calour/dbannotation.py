@@ -2,6 +2,7 @@ from logging import getLogger
 from pkg_resources import resource_filename
 import pickle
 import sys
+import os
 import os.path
 
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
@@ -462,10 +463,13 @@ class DBAnnotateSave(QtWidgets.QDialog):
     '''
 
     # Attributes:
+    # the ontologies preloaded for the autocomplete
+    _ontologies_loaded = set()
     # used to store the ontology values for the autocomplete
     _ontology_dict = None
     # used to store the dbbact (user) ontology terms
     _ontology_dbbact = None
+    # the maximal ontology term id present local (for syncing with the dbbact server for new terms)
     _ontology_dbbact_max_id = 0
 
     def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None, get_seq_region=False):
@@ -551,7 +555,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.show()
 
     def _load_ontologies(self, dbclass=None):
-        '''Load the ontology term files from the local computer (for autocomplete). The data is stored locally in DBAnnotateSave._ontology_dict and DBAnnotateSave._ontology_from_id
+        '''Load the ontology term files from the local computer (for autocomplete).
+
+        The data is stored locally in DBAnnotateSave._ontology_dict and DBAnnotateSave._ontology_from_id
 
         The needed files are created by a script from ontology files and are:
         data/ontology.pickle:
@@ -571,18 +577,42 @@ class DBAnnotateSave(QtWidgets.QDialog):
         For example for the term "united states of america" we have in DBAnnotateSave._ontology_dict key "U.S.A. :GAZ(United States of America)" with value GAZ:00002459
         and in DBAnnotateSave._ontology_from_id we have key "GAZ:00002459" with value "United States of America"
         '''
-        if DBAnnotateSave._ontology_dict is None:
-            print('loading')
-            ontology_file = resource_filename(__package__, 'data/ontology.pickle')
-            ontology = pickle.load(open(ontology_file, 'rb'))
-            DBAnnotateSave._ontology_dict = ontology
-            print('sorting')
-            olist = list(DBAnnotateSave._ontology_dict.keys())
-            DBAnnotateSave._ontology_sorted_list = olist
-            # DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
+        if len(DBAnnotateSave._ontologies_loaded) == 0:
+            DBAnnotateSave._ontology_from_id = {}
+            DBAnnotateSave._ontology_dict = {}
+            logger.info('Loading ontology autocomplete')
+            ontology_dir = resource_filename(__package__, 'data')
+            for cfile in os.listdir(ontology_dir):
+                if not cfile.endswith('.ontology.pickle'):
+                    continue
+                # load the ontology file (key=full name (with ENVO:XXXX), value=dbbact_id)
+                logger.debug('Loading ontology %s' % cfile)
+                ontology = pickle.load(open(os.path.join(ontology_dir, cfile), 'rb'))
+                DBAnnotateSave._ontology_dict.update(ontology)
+                # load the ontology ids file (key=dbbact_id, value=name (without ENVO:XXXX))
+                logger.debug('Loading ontology ids %s' % cfile)
+                ontology_from_id_file = os.path.join(ontology_dir, '.'.join(cfile.split('.')[:-1]) + '.ids.pickle')
+                ids_dict = pickle.load(open(ontology_from_id_file, 'rb'))
+                DBAnnotateSave._ontology_from_id.update(ids_dict)
+                DBAnnotateSave._ontologies_loaded.add(cfile)
+                logger.debug('Loaded')
+            # create the sorted names list for the autocomplete (not sorted yet since need to add dbbact ontology terms)
+            logger.debug('Sorting ontologies')
+            DBAnnotateSave._ontology_sorted_list = list(DBAnnotateSave._ontology_dict.keys())
+            logger.debug('Finished loading ontologies for autocomplete')
 
-            ontology_from_id_file = resource_filename(__package__, 'data/ontologyfromid.pickle')
-            DBAnnotateSave._ontology_from_id = pickle.load(open(ontology_from_id_file, 'rb'))
+        # if DBAnnotateSave._ontology_dict is None:
+        #     print('loading')
+        #     ontology_file = resource_filename(__package__, 'data/ontology.pickle')
+        #     ontology = pickle.load(open(ontology_file, 'rb'))
+        #     DBAnnotateSave._ontology_dict = ontology
+        #     print('sorting')
+        #     olist = list(DBAnnotateSave._ontology_dict.keys())
+        #     DBAnnotateSave._ontology_sorted_list = olist
+        #     # DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
+
+        #     ontology_from_id_file = resource_filename(__package__, 'data/ontologyfromid.pickle')
+        #     DBAnnotateSave._ontology_from_id = pickle.load(open(ontology_from_id_file, 'rb'))
 
         # get the dbbact ontology terms from the dbbact file (if exists) otherwise create
         if DBAnnotateSave._ontology_dbbact is None:
@@ -612,6 +642,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
             if len(new_terms) > 0:
                 logger.debug('Got %d new dbbact user ontology terms' % len(new_terms))
                 DBAnnotateSave._ontology_dbbact_max_id = new_terms[max(new_terms, key=new_terms.get)]
+                # add the new terms to the ontology terms dict
                 DBAnnotateSave._ontology_dbbact.update(new_terms)
                 # save the updated terms list if we have enough new terms (don't want to save everything every time)
                 if len(new_terms) > 25:
