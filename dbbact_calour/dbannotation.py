@@ -497,6 +497,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         self.bplus.clicked.connect(self.plus)
         self.bminus.clicked.connect(self.minus)
         self.bontoinput.returnPressed.connect(self.plus)
+        self.bontoinput.textEdited.connect(self.ontochanged)
         self.bstudyinfo.clicked.connect(self.studyinfo)
         self.bisa.toggled.connect(self.radiotoggle)
         self.bdiffpres.toggled.connect(self.radiotoggle)
@@ -522,6 +523,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
         # init the ontology values
         self._load_ontologies(dbclass)
         model.setStringList(self._ontology_sorted_list)
+        # store the completer
+        self._ontology_completer = completer
 
         self.setWindowTitle(expdat.description)
 
@@ -795,6 +798,13 @@ class DBAnnotateSave(QtWidgets.QDialog):
         cgroup = self.getontogroup()
         self.addtolist(cgroup, conto)
         self.cleartext()
+
+    def ontochanged(self):
+        conto = str(self.bontoinput.text())
+        if len(conto) > 3:
+            self.bontoinput.setCompleter(self._ontology_completer)
+        else:
+            self.bontoinput.setCompleter(None)
 
     def addtolist(self, cgroup, conto):
         """
