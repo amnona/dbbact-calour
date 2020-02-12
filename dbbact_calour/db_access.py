@@ -228,25 +228,61 @@ class DBAccess():
                 if cdet[0] == 'high':
                     chigh.append(cdet[1])
                     continue
-            cdesc += ' high in '
+            cdesc += 'HIGH IN '
             for cval in chigh:
                 cdesc += cval + ' '
-            cdesc += ' compared to '
+            cdesc += 'COMPARED TO '
             for cval in clow:
                 cdesc += cval + ' '
-            cdesc += ' in '
+            cdesc += 'IN '
+            for cval in call:
+                cdesc += cval + ' '
+        elif cann['annotationtype'] == 'positive association':
+            chigh = []
+            call = []
+            for cdet in cann['details']:
+                if cdet[0] == 'all':
+                    call.append(cdet[1])
+                    continue
+                if cdet[0] == 'high':
+                    chigh.append(cdet[1])
+                    continue
+            cdesc += 'POSITIVELY ASSOCIATED WITH '
+            for cval in chigh:
+                cdesc += cval + ' '
+            cdesc += 'IN '
+            for cval in call:
+                cdesc += cval + ' '
+        elif cann['annotationtype'] == 'negative association':
+            clow = []
+            call = []
+            for cdet in cann['details']:
+                if cdet[0] == 'all':
+                    call.append(cdet[1])
+                    continue
+                if cdet[0] == 'low':
+                    chigh.append(cdet[1])
+                    continue
+            cdesc += 'NEGATIVELY ASSOCIATED WITH '
+            for cval in clow:
+                cdesc += cval + ' '
+            cdesc += 'IN '
             for cval in call:
                 cdesc += cval + ' '
         elif cann['annotationtype'] == 'isa':
-            cdesc += ' is a '
-            for cdet in cann['details']:
-                cdesc += 'cdet,'
-        elif cann['annotationtype'] == 'contamination':
-            cdesc += 'contamination'
-        else:
-            cdesc += cann['annotationtype'] + ' '
+            cdesc += ' IS A'
             for cdet in cann['details']:
                 cdesc = cdesc + ' ' + cdet[1] + ','
+        elif cann['annotationtype'] == 'contamination':
+            cdesc += 'CONTAMINATION IN'
+            for cdet in cann['details']:
+                cdesc = cdesc + ' ' + cdet[1] + ','
+        else:
+            cdesc += cann['annotationtype'].upper() + ' IN'
+            for cdet in cann['details']:
+                cdesc = cdesc + ' ' + cdet[1] + ','
+        if cann['description']:
+            cdesc += ')'
         return cdesc
 
     def get_seq_annotation_strings(self, sequence, max_id=None, get_summary=True):
