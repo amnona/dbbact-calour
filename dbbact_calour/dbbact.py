@@ -32,10 +32,8 @@ Functions
 '''
 
 from collections import defaultdict
-from logging import getLogger, NOTSET, basicConfig
-from logging.config import fileConfig
+from logging import getLogger
 from copy import deepcopy
-from pkg_resources import resource_filename
 import webbrowser
 
 import numpy as np
@@ -51,22 +49,6 @@ from calour.experiment import Experiment
 from calour.util import _to_list
 
 logger = getLogger(__name__)
-
-try:
-    # get the logger config file location
-    log = resource_filename(__name__, 'log.cfg')
-    # log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
-    # set the logger output according to log.cfg
-    # setting False allows other logger to print log.
-    fileConfig(log, disable_existing_loggers=False)
-    # set the log level to same value as calour log level
-    clog = getLogger('calour')
-    calour_log_level = clog.getEffectiveLevel()
-    if calour_log_level != NOTSET:
-        logger.setLevel(calour_log_level)
-except:
-    print('FAILED loading logging config file %s' % log)
-    basicConfig(format='%(levelname)s:%(message)s')
 
 
 class DBBact(Database):

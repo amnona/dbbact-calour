@@ -1472,7 +1472,7 @@ class DBAccess():
                 exp_term_count[cterm] += 1
         return exp_term_count
 
-    def get_ontology_terms(self, min_term_id=None, ontologyid=1):
+    def get_ontology_terms(self, min_term_id=None, ontologyid=None):
         '''Get all the terms in an ontology, starting with termid min_term_id
         By default it gets the terms for the dbbact ontology (i.e. all terms not in envo/gaz/etc.)
 
@@ -1486,7 +1486,14 @@ class DBAccess():
 
         Returns
         -------
-        dict of {term(str): dbbact_id(int)}
+        ontology:
+            dict of {term(str): dbbact_id(int)}
+                term: the ontology term (i.e. 'feces')
+                dbbact_id: the internal dbbact id for the term
+        ontology_term_ids:
+            dict of {dbbact_id(int): ontology_term_id (str)}
+                dbbact_id: the internal dbbact id for the term
+                ontology_term_id: the id of the term in the ontology (i.e. 'UBERON:00004')
         '''
         rdata = {'min_term_id': min_term_id, 'ontologyid': ontologyid}
         res = self._get('ontology/get_all_terms', rdata)
@@ -1495,8 +1502,8 @@ class DBAccess():
             logger.warn(msg)
             return msg
         terms = res.json()
-        logger.debug('got %d terms' % len(terms))
-        return terms
+        logger.debug('got %d new terms' % len(terms['ontology']))
+        return terms['ontology'], terms['ontology_term_ids']
 
     def _get_term_features(self, features, feature_terms):
         '''Get dict of number of appearances in each sequence keyed by term

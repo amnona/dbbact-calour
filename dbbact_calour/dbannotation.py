@@ -14,7 +14,6 @@ from calour.util import get_config_value, set_config_value, get_config_file
 
 from . import dbbact
 
-
 logger = getLogger(__name__)
 
 # the global variable to store annotation history
@@ -471,6 +470,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
     _ontology_dbbact = None
     # the maximal ontology term id present local (for syncing with the dbbact server for new terms)
     _ontology_dbbact_max_id = 0
+    # the ontologies autocomplete sorted list
+    _ontology_sorted_list = []
 
     def __init__(self, selected_features, expdat, prefill_annotation=None, dbclass=None, get_seq_region=False):
         '''Create the manual annotation window
@@ -583,7 +584,10 @@ class DBAnnotateSave(QtWidgets.QDialog):
         For example for the term "united states of america" we have in DBAnnotateSave._ontology_dict key "U.S.A. :GAZ(United States of America)" with value GAZ:00002459
         and in DBAnnotateSave._ontology_from_id we have key "GAZ:00002459" with value "United States of America"
         '''
+        _changed = False
+
         if len(DBAnnotateSave._ontologies_loaded) == 0:
+            _changed = True
             DBAnnotateSave._ontology_from_id = {}
             DBAnnotateSave._ontology_dict = {}
             logger.info('Loading ontology autocomplete')
@@ -602,64 +606,112 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 DBAnnotateSave._ontology_from_id.update(ids_dict)
                 DBAnnotateSave._ontologies_loaded.add(cfile)
                 logger.debug('Loaded')
-            # create the sorted names list for the autocomplete (not sorted yet since need to add dbbact ontology terms)
-            logger.debug('Sorting ontologies')
-            DBAnnotateSave._ontology_sorted_list = list(DBAnnotateSave._ontology_dict.keys())
+            DBAnnotateSave._ontology_dbbact_max_id = DBAnnotateSave._ontology_dict[max(DBAnnotateSave._ontology_dict, key=DBAnnotateSave._ontology_dict.get)]
             logger.debug('Finished loading ontologies for autocomplete')
 
-        # if DBAnnotateSave._ontology_dict is None:
-        #     print('loading')
-        #     ontology_file = resource_filename(__package__, 'data/ontology.pickle')
-        #     ontology = pickle.load(open(ontology_file, 'rb'))
-        #     DBAnnotateSave._ontology_dict = ontology
-        #     print('sorting')
-        #     olist = list(DBAnnotateSave._ontology_dict.keys())
-        #     DBAnnotateSave._ontology_sorted_list = olist
-        #     # DBAnnotateSave._ontology_sorted_list = sorted(olist, key=lambda s: s.lower())
-
-        #     ontology_from_id_file = resource_filename(__package__, 'data/ontologyfromid.pickle')
-        #     DBAnnotateSave._ontology_from_id = pickle.load(open(ontology_from_id_file, 'rb'))
-
-        # get the dbbact ontology terms from the dbbact file (if exists) otherwise create
-        if DBAnnotateSave._ontology_dbbact is None:
-            user_ontology = {}
-            logger.debug('loading dbbact user ontology terms file')
-            user_ontology_file = resource_filename(__package__, 'data/user_ontology.pickle')
-            if os.path.isfile(user_ontology_file):
-                user_ontology = pickle.load(open(user_ontology_file, 'rb'))
-            else:
-                if dbclass is not None:
-                    logger.info('User ontology file %s does not exist. Creating...' % user_ontology_file)
-                    user_ontology = dbclass.db.get_ontology_terms()
-                    with open(user_ontology_file, 'wb') as ofl:
-                        pickle.dump(user_ontology, ofl)
-                        logger.info('Created user ontology file %s' % user_ontology_file)
-
-            DBAnnotateSave._ontology_dbbact = user_ontology
-            # get the maximal ontology termid (so sync is faster next time)
-            DBAnnotateSave._ontology_dbbact_max_id = user_ontology[max(user_ontology, key=user_ontology.get)]
-
-        # now add more ontology terms from the dbbact ontology
+        # get the new terms added to dbbact since we got the ontologies files
         if dbclass is not None:
             try:
-                new_terms = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
-            except AttributeError:
-                new_terms = []
-            if len(new_terms) > 0:
-                logger.debug('Got %d new dbbact user ontology terms' % len(new_terms))
-                DBAnnotateSave._ontology_dbbact_max_id = new_terms[max(new_terms, key=new_terms.get)]
-                # add the new terms to the ontology terms dict
-                DBAnnotateSave._ontology_dbbact.update(new_terms)
-                # save the updated terms list if we have enough new terms (don't want to save everything every time)
-                if len(new_terms) > 25:
+                logger.debug('current ontology term max_id is %d' % DBAnnotateSave._ontology_dbbact_max_id)
+                logger.debug('getting updates to ontology terms')
+                new_terms_names, new_terms_ids = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
+                # we have new terms, let's add them to our autocomplete
+                if len(new_terms_names) > 0:
+                    _changed = True
+                    # create the nice text formatting for the new terms
+                    # it is of the form:
+                    # term (term_ontology_id)
+                    # i.e.:
+                    # feces (UBERON:000004)
+                    new_term_strings = {}
+                    new_ontology_from_id = {}
+                    for cterm, cid in new_terms_names.items():
+                        cterm_str = '%s (%s)' % (cterm, new_terms_ids[str(cid)])
+                        new_term_strings[cterm_str] = cid
+                        new_ontology_from_id[cid] = cterm
+                    DBAnnotateSave._ontology_dict.update(new_term_strings)
+                    DBAnnotateSave._ontology_from_id.update(new_ontology_from_id)
+                    DBAnnotateSave._ontology_dbbact_max_id = DBAnnotateSave._ontology_dict[max(DBAnnotateSave._ontology_dict, key=DBAnnotateSave._ontology_dict.get)]
+                # if more than 10 new terms, write them to the updated_terms pickle files
+                if len(new_terms_names) > 10:
+                    logger.info('found %d new ontology terms. updating local file' % len(new_terms_names))
+                    # load the existing, update and save for updated_terms.ontology.pickle
+                    # it is {autocomplete_term_name(str): id(int)}
+                    user_ontology_file = resource_filename(__package__, 'data/updated_terms.ontology.pickle')
+                    if os.path.isfile(user_ontology_file):
+                        logger.debug('loading user ontology file')
+                        contology = pickle.load(open(user_ontology_file, 'rb'))
+                        logger.debug('loaded %d terms' % len(contology))
+                    else:
+                        contology = {}
+                    contology.update(new_term_strings)
                     with open(user_ontology_file, 'wb') as ofl:
-                        pickle.dump(DBAnnotateSave._ontology_dbbact, ofl)
+                            pickle.dump(contology, ofl)
+                            logger.debug('Created user ontology file %s' % user_ontology_file)
+                    # load the existing, update and save for updated_terms.ontology.pickle
+                    # it is {autocomplete_term_name(str): id(int)}
+                    user_ontology_file = resource_filename(__package__, 'data/updated_terms.ontology.ids.pickle')
+                    if os.path.isfile(user_ontology_file):
+                        logger.debug('loading user ontology id file %s' % user_ontology_file)
+                        contology_ids = pickle.load(open(user_ontology_file, 'rb'))
+                        logger.debug('loaded %d terms' % len(contology))
+                    else:
+                        contology_ids = {}
+                    contology_ids.update(new_ontology_from_id)
+                    with open(user_ontology_file, 'wb') as ofl:
+                            pickle.dump(contology_ids, ofl)
+                            logger.debug('Created user ontology-ids file %s' % user_ontology_file)
+            except AttributeError as e:
+                logger.warn('error encountered when updating user ontology files: %s' % e)
 
-        # update the terms sorted list with the user terms
-        all_term_list = DBAnnotateSave._ontology_sorted_list
-        if DBAnnotateSave._ontology_dbbact is not None:
-            all_term_list.extend(DBAnnotateSave._ontology_dbbact.keys())
-        DBAnnotateSave._ontology_sorted_list = sorted(all_term_list, key=lambda s: s.lower())
+        if len(DBAnnotateSave._ontology_sorted_list) == 0:
+            _changed = True
+
+        # if we changed the terms, re-sort
+        if _changed:
+            logger.debug('Sorting ontologies')
+            DBAnnotateSave._ontology_sorted_list = sorted(list(DBAnnotateSave._ontology_dict.keys()), key=lambda s: s.lower())
+
+        # # get the dbbact ontology terms from the dbbact file (if exists) otherwise create
+        # if DBAnnotateSave._ontology_dbbact is None:
+        #     user_ontology = {}
+        #     logger.debug('loading dbbact user ontology terms file')
+        #     user_ontology_file = resource_filename(__package__, 'data/user_ontology.pickle')
+        #     if os.path.isfile(user_ontology_file):
+        #         user_ontology = pickle.load(open(user_ontology_file, 'rb'))
+        #     else:
+        #         if dbclass is not None:
+        #             logger.info('User ontology file %s does not exist. Creating...' % user_ontology_file)
+        #             user_ontology = dbclass.db.get_ontology_terms()
+        #             with open(user_ontology_file, 'wb') as ofl:
+        #                 pickle.dump(user_ontology, ofl)
+        #                 logger.info('Created user ontology file %s' % user_ontology_file)
+
+        #     DBAnnotateSave._ontology_dbbact = user_ontology
+        #     # get the maximal ontology termid (so sync is faster next time)
+        #     DBAnnotateSave._ontology_dbbact_max_id = user_ontology[max(user_ontology, key=user_ontology.get)]
+
+        # # now add more ontology terms from the dbbact ontology
+        # if dbclass is not None:
+        #     try:
+        #         new_terms = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
+        #     except AttributeError:
+        #         new_terms = []
+        #     if len(new_terms) > 0:
+        #         logger.debug('Got %d new dbbact user ontology terms' % len(new_terms))
+        #         DBAnnotateSave._ontology_dbbact_max_id = new_terms[max(new_terms, key=new_terms.get)]
+        #         # add the new terms to the ontology terms dict
+        #         DBAnnotateSave._ontology_dbbact.update(new_terms)
+        #         # save the updated terms list if we have enough new terms (don't want to save everything every time)
+        #         if len(new_terms) > 25:
+        #             with open(user_ontology_file, 'wb') as ofl:
+        #                 pickle.dump(DBAnnotateSave._ontology_dbbact, ofl)
+
+        # # update the terms sorted list with the user terms
+        # all_term_list = DBAnnotateSave._ontology_sorted_list
+        # if DBAnnotateSave._ontology_dbbact is not None:
+        #     all_term_list.extend(DBAnnotateSave._ontology_dbbact.keys())
+        # DBAnnotateSave._ontology_sorted_list = sorted(all_term_list, key=lambda s: s.lower())
 
     # def history(self):
     #     curtext = []
