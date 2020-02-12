@@ -66,7 +66,7 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 		the number of experiments where annotations for each term appear
 	reduced_f
 	'''
-	logger.debug(2, 'getting enrichment scores from %d sequences' % len(seqannotations))
+	debug(2, 'getting enrichment scores from %d sequences' % len(seqannotations))
 	debug(1, 'getting recall')
 	recall = get_recall(annotations, seqannotations, ignore_exp=ignore_exp, term_info=term_info, term_types=term_types)
 	debug(1, 'getting precision')
