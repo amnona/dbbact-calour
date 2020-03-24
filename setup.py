@@ -47,7 +47,7 @@ setup(name='dbbact-calour',
       url='http://dbbact.org',
       test_suite='nose.collector',
       packages=find_packages(),
-      package_data={'dbbact_calour': ['data/*.pickle', 'log.cfg']},
+      package_data={'dbbact_calour': ['data/*.pickle', 'log.cfg', 'ui/*.ui']},
       install_requires=[
           # 'pandas',
           # 'pyqt5',
