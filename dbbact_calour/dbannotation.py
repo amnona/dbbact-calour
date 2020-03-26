@@ -69,7 +69,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
     app, app_created = init_qt5()
 
     # test if we have user/password set-up
-    test_user_password(dbclass)
+    test_user_password(dbclass.db)
 
     # test if study already in database
     cdata = dbclass.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'])
@@ -164,7 +164,7 @@ def update_annotation_gui(db, annotation, exp):
     app, app_created = init_qt5()
 
     # test if we have user/password set-up
-    test_user_password(db)
+    test_user_password(db.db)
 
     annotationid = annotation['annotationid']
     primerid = annotation.get('primerid')
@@ -233,8 +233,8 @@ def test_user_password(db):
 
     Parameters
     ----------
-    db : DBBact
-        the database interface class
+    db : DBBact.DBAccess
+        the database interface class.
     '''
     logger.debug('Testing if user/pwd in config file')
     username = get_config_value('username', section='dbbact')
