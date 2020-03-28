@@ -384,14 +384,13 @@ class DBStudyInfo(QtWidgets.QDialog):
             # if not in database, get details from map file
             # the supplied details (supplied to the init function via exp_details)
             for cinfo in study_details:
-                print(cinfo)
                 qtlistadd(self.blist, cinfo[0] + ':' + str(cinfo[1]), {'fromdb': False, 'type': cinfo[0], 'value': str(cinfo[1])}, color='black')
 
         self.bplus.clicked.connect(self.plus)
         self.bvalue.returnPressed.connect(self.plus)
         self.bminus.clicked.connect(self.minus)
         self.bannotations.clicked.connect(self.annotations)
-        self.bvalue.returnPressed.connect(self.plus)
+        # self.bvalue.returnPressed.connect(self.plus)
         # self.cexp=expdat
         # self.setWindowTitle(self.cexp.studyname)
         self.bvalue.setFocus()
@@ -532,7 +531,9 @@ class DBAnnotateSave(QtWidgets.QDialog):
         completer.maxVisibleItems = 10
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         # make the completer selection also erase the text edit
-        completer.activated.connect(self.cleartext, type=Qt.QueuedConnection)
+        # completer.activated.connect(self.cleartext, type=Qt.QueuedConnection)
+        # on selection from the completer, add to the ontology list
+        completer.activated.connect(self.plus, type=Qt.QueuedConnection)
         # init the ontology values
         self._load_ontologies(dbclass)
         model.setStringList(self._ontology_sorted_list)
@@ -762,7 +763,6 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
     def radiotoggle(self):
         if self.bisa.isChecked():
-            print(self.bisatype.currentText())
             if 'negatively associated' in self.bisatype.currentText().lower():
                 self.blow.setDisabled(False)
             else:
@@ -845,7 +845,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         if conto == '':
             logger.debug('no string to add to list')
             return
-        print('addtolist %s %s' % (cgroup, conto))
+        logger.debug('addtolist %s %s' % (cgroup, conto))
         if conto in self._ontology_dict:
             conto = self._ontology_from_id[self._ontology_dict[conto]]
         else:
