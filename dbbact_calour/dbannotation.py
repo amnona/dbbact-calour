@@ -160,11 +160,20 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
 
 def update_annotation_gui(db, annotation, exp):
     '''Update an existing annotation
+
+    Parameters
+    ----------
+    db: DBAccess
+        the interface to dbbact
+    annotation: dict
+        the annotation to update (dict including the key "annotationid")
+    exp: Calour.Experiment
+        the experiment on which to update the annotation
     '''
     app, app_created = init_qt5()
 
     # test if we have user/password set-up
-    test_user_password(db.db)
+    test_user_password(db)
 
     annotationid = annotation['annotationid']
     primerid = annotation.get('primerid')
