@@ -714,7 +714,7 @@ class DBAccess():
             logger.debug('experiment added. id is %d' % newid)
             return newid
         else:
-            logger.debug('error adding experiment. msg: %s' % res.content)
+            logger.error('error adding experiment. msg: %s' % res.content)
             return None
 
     def add_annotations(self, expid, sequences, annotationtype, annotations, submittername='NA',
