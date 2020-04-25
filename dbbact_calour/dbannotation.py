@@ -351,6 +351,9 @@ def study_data_ui(cexp):
             logger.warn('No new items. not saving anything')
             return cid
         dataid = bdb.db.add_experiment_data(newstudydata, expid=cid)
+        if dataid is None:
+            logger.error('Error enountered - experiment not added')
+            return None
         logger.debug('Study data saved to id %d' % dataid)
         return dataid
     return None
@@ -627,6 +630,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 new_terms_names, new_terms_ids = dbclass.db.get_ontology_terms(min_term_id=DBAnnotateSave._ontology_dbbact_max_id)
                 # we have new terms, let's add them to our autocomplete
                 if len(new_terms_names) > 0:
+                    logger.debug('found %d new terms' % len(new_terms_names))
                     _changed = True
                     # create the nice text formatting for the new terms
                     # it is of the form:
@@ -642,6 +646,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
                     DBAnnotateSave._ontology_dict.update(new_term_strings)
                     DBAnnotateSave._ontology_from_id.update(new_ontology_from_id)
                     DBAnnotateSave._ontology_dbbact_max_id = DBAnnotateSave._ontology_dict[max(DBAnnotateSave._ontology_dict, key=DBAnnotateSave._ontology_dict.get)]
+                    logger.debug('new ontology dbbact_max_id: %d' % DBAnnotateSave._ontology_dbbact_max_id)
                 # if more than 10 new terms, write them to the updated_terms pickle files
                 if len(new_terms_names) > 10:
                     logger.info('found %d new ontology terms. updating local file' % len(new_terms_names))
