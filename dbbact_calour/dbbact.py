@@ -678,10 +678,11 @@ class DBBact(Database):
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
         tseqs['group'] = seq_group
-        newexp = Experiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
-        newexp = newexp.cluster_features(1)
-        newexp = newexp.sort_by_metadata(field='expid', axis='f')
-        newexp.plot(feature_field='annotation', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=True, barx_fields=['group'], barx_label=True, **kwargs)
+        newexp = Experiment(tmat.T, sample_metadata=tanno, feature_metadata=tseqs)
+        # newexp = newexp.cluster_features(1)
+        newexp = newexp.cluster_data(axis='s')
+        # newexp = newexp.sort_by_metadata(field='expid', axis='s')
+        newexp.plot(cmap='tab20b', norm=None, barx_fields=['expid'], barx_label=False, bary_fields=['group'], bary_label=True, **kwargs)
         return newexp
 
     def show_term_details_diff(self, term, exp, **kwargs):
