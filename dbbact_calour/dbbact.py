@@ -29,6 +29,7 @@ Functions
    DBBact.sample_enrichment
    DBBact.draw_wordcloud
    DBBact.get_enrichment_score
+   DBBact.show_enrichment_qt5
 '''
 
 from collections import defaultdict
@@ -1453,6 +1454,60 @@ class DBBact(Database):
         reduced_f
         '''
         return get_enrichment_score(*kargs, **kwargs)
+
+    def show_enrichment_qt5(self, group1, group2=None, exp=None, max_id=None, group1_name=None, group2_name=None, **kwargs):
+        '''Show enriched terms between group1 and group2 using a qt5 GUI
+
+        The gui shows a list of terms enriched in the 2 groups, and enables plotting per term heatmap and venn diagram.
+
+        Parameters
+        ----------
+        cdb: DBBact.DBAccess
+            the database interface for the analysis
+        group1: list of str ('ACGT')
+            the first group of sequences
+        group2: list of str or None, optional
+            the second group of sequences
+            if None, group2 is taken from exp by using all sequences not in group1
+        exp: calour.Experiment or None, optional
+            the experiment on which the analysis is performed.
+            If not None, annotations are taken from the experiment (if available)
+            NOTE: if annotations are not available, they will be added to the experiment the first time the function is called
+            If None, annotations are always queried from dbbact from each group and not stored for further queries.
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+        **kwargs: additional parameters supplied to db_access.term_enrichment(). These include:
+        term_type : str or None (optional)
+            The type of annotation data to test for enrichment
+            options are:
+            'term' - ontology terms associated with each feature.
+            'parentterm' - ontology terms including parent terms associated with each feature.
+            'annotation' - the full annotation strings associated with each feature
+            'combined' - combine 'term' and 'annotation'
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment
+            None (default) to use annotations from all experiments including the current one
+        min_appearances : int (optional)
+            The minimal number of times a term appears in order to include in output list.
+        fdr_method : str (optional)
+            The FDR method used for detecting enriched terms (permutation test). options are:
+            'dsfdr' (default): use the discrete FDR correction
+            'bhfdr': use Benjamini Hochbert FDR correction
+        score_method : str (optional)
+            The score method used for calculating the term score. Options are:
+            'all_mean' (default): mean over each experiment of all annotations containing the term
+            'sum' : sum of all annotations (experiment not taken into account)
+            'card_mean': use a null model keeping the number of annotations per each bacteria
+        random_seed: int or None
+            int to specify the random seed for numpy.random.
+        use_term_pairs: bool, optional
+            True to also test enrichment in pairs of terms (i.e. homo sapiens+feces, etc.)
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all the terms in focus_terms
+        '''
+        from .enrichment_gui import show_enriched_terms_qt5
+        show_enriched_terms_qt5(cdb=self, group1=group1, group2=group2, exp=exp, max_id=max_id, group1_name=group1_name, group2_name=group2_name, **kwargs)
 
 
 def _get_color(word, font_size, position, orientation, font_path, random_state, fscore, recall, precision, term_count):

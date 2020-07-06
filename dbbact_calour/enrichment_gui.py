@@ -4,7 +4,6 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QVBoxLayout, QListWidget, QDialogButtonBox, QHBoxLayout, QLabel, QPushButton
 import numpy as np
 
-from . import dbbact
 from .dbannotation import init_qt5
 
 logger = getLogger(__name__)
@@ -107,7 +106,7 @@ def show_enriched_terms_qt5(cdb, group1, group2=None, exp=None, max_id=None, gro
     # if ignore exp is True, it means we should ignore the current experiment
     ignore_exp = kwargs.get('ignore_exp')
     if ignore_exp is True:
-        ignore_exp = cdb.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+        ignore_exp = cdb.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
         if ignore_exp is None:
             logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
         else:
