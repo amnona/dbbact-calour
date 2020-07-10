@@ -72,7 +72,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
     test_user_password(dbclass.db)
 
     # test if study already in database
-    cdata = dbclass.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'])
+    cdata = dbclass.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'])
     if cdata is None:
         logger.info('Study does not exist in dbbact. Creating new study')
         cdata = study_data_ui(exp)
@@ -153,7 +153,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
 
         # store the history
         global history
-        history[exp.exp_metadata['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        history[exp.info['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
         return ''
     return 'Add annotation cancelled'
 
@@ -230,7 +230,7 @@ def update_annotation_gui(db, annotation, exp):
 
         # store the history
         global history
-        history[exp.exp_metadata['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        history[exp.info['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
         return ''
     return 'Update annotation cancelled'
 
@@ -313,13 +313,13 @@ def study_data_ui(cexp):
         studyid if study  has data, None if no data
     """
     bdb = dbbact.DBBact()
-    cid = bdb.db.find_experiment_id(datamd5=cexp.exp_metadata['data_md5'], mapmd5=cexp.exp_metadata['sample_metadata_md5'])
+    cid = bdb.db.find_experiment_id(datamd5=cexp.info['data_md5'], mapmd5=cexp.info['sample_metadata_md5'])
 
     # add study details we have
     study_details = []
     if cid is None:
-        study_details.append(('DataMD5', cexp.exp_metadata['data_md5']))
-        study_details.append(('MapMD5', cexp.exp_metadata['sample_metadata_md5']))
+        study_details.append(('DataMD5', cexp.info['data_md5']))
+        study_details.append(('MapMD5', cexp.info['sample_metadata_md5']))
         interesting_columns = {'sra_study_s': 'sra', 'project_name_s': 'name', 'experiment_title': 'name', 'experiment_design_description': 'name', 'BioProject_s': 'sra', 'run_date': 'date'}
         for ccol in cexp.sample_metadata.columns:
             if ccol.lower() in interesting_columns:
@@ -550,7 +550,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         if prefill_annotation is None:
             # try to autofill from history if experiment annotated
             global history
-            expmd5 = expdat.exp_metadata['data_md5']
+            expmd5 = expdat.info['data_md5']
             if expmd5 in history:
                 logger.debug('Filling annotation details from history')
                 self.fill_from_annotation(history[expmd5], onlyall=True)
