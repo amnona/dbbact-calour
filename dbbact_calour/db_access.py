@@ -1138,8 +1138,8 @@ class DBAccess():
         if random_seed is not None:
             np.random.seed(random_seed)
 
-        g1_features = np.array(g1_features)
-        g2_features = np.array(g2_features)
+        g1_features = np.array(list(g1_features))
+        g2_features = np.array(list(g2_features))
         exp_features = np.hstack([g1_features, g2_features])
 
         # filter keeping only annotations containing focus_terms (if not None)
