@@ -279,7 +279,7 @@ class DBBact(Database):
             # if annotations not yet in experiment - add them
             self.add_all_annotations_to_exp(exp, max_id=max_id, force=False, **kwargs)
             # and filter only the ones relevant for features
-            sequence_terms = exp.databases['dbbact']['__dbbact_sequence_terms']
+            sequence_terms = exp.databases['dbbact']['sequence_terms']
             sequence_annotations = exp.databases['dbbact']['sequence_annotations']
             annotations = exp.databases['dbbact']['annotations']
             term_info = exp.databases['dbbact']['term_info']
