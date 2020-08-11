@@ -3,8 +3,8 @@ from logging.config import fileConfig
 from logging import getLogger, NOTSET, basicConfig
 
 __credits__ = "https://github.com/amnona/dbbact-calour/graphs/contributors"
-__version__ = "2020.7.09"
-__version_numeric__ = 2020.0709
+__version__ = "2020.7.11"
+__version_numeric__ = 2020.0711
 
 # load the logger config
 try:

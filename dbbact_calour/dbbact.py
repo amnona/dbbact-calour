@@ -171,17 +171,17 @@ class DBBact(Database):
             return
         webbrowser.open(address, new=new)
 
-    def add_all_annotations_to_exp(self, exp, max_id=None, **kwargs):
+    def add_all_annotations_to_exp(self, exp, max_id=None, force=True, **kwargs):
         '''Get annotations for all sequences in experiment and store them in it
 
-        Stores all the annotation details in exp.exp_metadata. Stored key/values are:
-        '__dbbact_sequence_terms' : dict of {sequence: list of terms}
+        Stores all the annotation details in exp.databases['dbbact']. Stored key/values are:
+        'sequence_terms' : dict of {sequence: list of terms}
             key is sequence, value is list of ontology terms present in the bacteria.
-        '__dbbact_sequence_annotations' : dict of {sequence: list of annotationIDs}
+        'sequence_annotations' : dict of {sequence: list of annotationIDs}
             key is sequence, value is list of annotationIDs present in the bacteria.
-        '__dbbact_annotations':  dict of {annotationID : annotation_details}
+        'annotations':  dict of {annotationID : annotation_details}
             key is annotaitonID (int), value is the dict of annotation details.
-        '__dbbact_term_info': dict of {term, {'total_annotations':XXX, 'total_sequences':YYY}}
+        'term_info': dict of {term, {'total_annotations':XXX, 'total_sequences':YYY}}
             number of total annotations and sequences in the database having this term
 
         Parameters
@@ -190,21 +190,33 @@ class DBBact(Database):
             The experiment to get the details for and store them in
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
+        force: bool, optional
+            if True, force re-adding the annotations to the experiment
+            if False, add annotations only if not already added
         **kwargs:
             extra parameters to pass to get_seq_list_fast_annotations()
 
         Returns
         -------
         str
-        '' if ok, otherwise error string
+        empty('') if ok, otherwise error string
         '''
+        # test if already loaded when force is False
+        if not force:
+            if exp is None:
+                return ''
+            if 'sequence_terms' in exp.databases['dbbact']:
+                return ''
+
         logger.debug('Getting annotations for %d sequences' % len(exp.feature_metadata))
         sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(exp.feature_metadata.index.values, max_id=max_id, **kwargs)
-        exp.exp_metadata['__dbbact_sequence_terms'] = sequence_terms
-        exp.exp_metadata['__dbbact_sequence_annotations'] = sequence_annotations
-        exp.exp_metadata['__dbbact_annotations'] = annotations
-        exp.exp_metadata['__dbbact_term_info'] = term_info
-        exp.exp_metadata['__dbbact_taxonomy'] = taxonomy
+        if 'dbbact' not in exp.databases:
+            exp.databases['dbbact'] = {}
+        exp.databases['dbbact']['sequence_terms'] = sequence_terms
+        exp.databases['dbbact']['sequence_annotations'] = sequence_annotations
+        exp.databases['dbbact']['annotations'] = annotations
+        exp.databases['dbbact']['term_info'] = term_info
+        exp.databases['dbbact']['taxonomy'] = taxonomy
         logger.info('Added annotation data to experiment. Total %d annotations, %d terms' % (len(annotations), len(sequence_terms)))
         return ''
 
@@ -264,21 +276,20 @@ class DBBact(Database):
         if term_type is None:
             term_type = 'terms'
         if exp is not None:
-            if '__dbbact_sequence_terms' not in exp.exp_metadata:
-                # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp, max_id=max_id, **kwargs)
+            # if annotations not yet in experiment - add them
+            self.add_all_annotations_to_exp(exp, max_id=max_id, force=False, **kwargs)
             # and filter only the ones relevant for features
-            sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
-            sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
-            annotations = exp.exp_metadata['__dbbact_annotations']
-            term_info = exp.exp_metadata['__dbbact_term_info']
-            taxonomy = exp.exp_metadata['__dbbact_taxonomy']
+            sequence_terms = exp.databases['dbbact']['sequence_terms']
+            sequence_annotations = exp.databases['dbbact']['sequence_annotations']
+            annotations = exp.databases['dbbact']['annotations']
+            term_info = exp.databases['dbbact']['term_info']
+            taxonomy = exp.databases['dbbact']['taxonomy']
         else:
             sequence_terms, sequence_annotations, annotations, term_info, taxonomy = self.db.get_seq_list_fast_annotations(features, max_id=max_id, **kwargs)
 
         # get the current experimentID to ignore if ignore_exp is True
         if ignore_exp is True:
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
@@ -399,14 +410,13 @@ class DBBact(Database):
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
         '''
-        if '__dbbact_sequence_terms' not in exp.exp_metadata:
-                # if annotations not yet in experiment - add them
-            self.add_all_annotations_to_exp(exp, max_id=max_id)
+        # if annotations not yet in experiment - add them
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
         # get the dbbact annotations
-        sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
-        sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
-        annotations = exp.exp_metadata['__dbbact_annotations']
-        term_info = exp.exp_metadata['__dbbact_term_info']
+        sequence_terms = exp.databases['dbbact']['sequence_terms']
+        sequence_annotations = exp.databases['dbbact']['sequence_annotations']
+        annotations = exp.databases['dbbact']['annotations']
+        term_info = exp.databases['dbbact']['term_info']
 
         # filter
         keep_features = []
@@ -538,20 +548,19 @@ class DBBact(Database):
         bg_features = np.array(list(exp_features.difference(features)))
 
         # add all annotations to experiment if not already added
-        if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp, max_id=max_id)
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
 
         ignore_exp = kwargs.get('ignore_exp')
         # if ignore exp is True, it means we should ignore the current experiment
         if ignore_exp is True:
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
 
-        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.exp_metadata['__dbbact_annotations'], seq_annotations=exp.exp_metadata['__dbbact_sequence_annotations'], term_info=exp.exp_metadata.get('__dbbact_term_info'), **kwargs)
+        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'], seq_annotations=exp.databases['dbbact']['sequence_annotations'], term_info=exp.databases['dbbact'].get('term_info'), **kwargs)
         return res
 
     def enrichmentcount(self, exp, features, **kwargs):
@@ -607,20 +616,19 @@ class DBBact(Database):
         bg_features = np.array(list(exp_features.difference(features)))
 
         # add all annotations to experiment if not already added
-        if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp)
+        self.add_all_annotations_to_exp(exp, force=False)
 
         ignore_exp = kwargs.get('ignore_exp')
         # if ignore exp is True, it means we should ignore the current experiment
         if ignore_exp is True:
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
 
-        res = self.db.get_term_enriched_annotations(g1_features=features, g2_features=bg_features, all_annotations=exp.exp_metadata['__dbbact_annotations'], seq_annotations=exp.exp_metadata['__dbbact_sequence_annotations'], **kwargs)
+        res = self.db.get_term_enriched_annotations(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'], seq_annotations=exp.databases['dbbact']['sequence_annotations'], **kwargs)
         return res
 
     def get_terms_exp(self, exp, term):
@@ -636,7 +644,7 @@ class DBBact(Database):
         -------
         Experiment with features (from exp) as columns, annotations cotaining terms as rows
         '''
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, list(exp.feature_metadata.index.values), exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        tmat, tanno, tseqs = self.db.get_term_annotations(term, list(exp.feature_metadata.index.values), exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         newexp = Experiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
         newexp = newexp.cluster_features(1)
         newexp = newexp.sort_by_metadata(field='expid', axis='f')
@@ -673,9 +681,8 @@ class DBBact(Database):
         term = term.rstrip(' *')
         all_seqs = list(features.copy())
         all_seqs.extend(list(group2_features))
-        if '__dbbact_sequence_annotations' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp, max_id=max_id)
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
+        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
         tseqs['group'] = seq_group
@@ -730,7 +737,8 @@ class DBBact(Database):
             term = term[1:]
         all_seqs = features.copy()
         all_seqs.extend(group2_features)
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        self.add_all_annotations_to_exp(exp, force=False)
+        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         seq_group = np.ones(len(all_seqs))
         seq_group[:len(features)] = 0
         tseqs['group'] = seq_group
@@ -792,8 +800,7 @@ class DBBact(Database):
             diff_title_high = []
             diff_title_low = []
             all_title = []
-            print(canno)
-            cannotation = exp.exp_metadata['__dbbact_annotations'][canno['annotationid']]
+            cannotation = exp.databases['dbbact']['annotations'][canno['annotationid']]
             for cdetailtype, cdetailterm in cannotation['details']:
                 if cdetailtype == 'all':
                     all_title.append(cdetailterm)
@@ -821,7 +828,7 @@ class DBBact(Database):
             term = term[1:]
         all_seqs = features.copy()
         all_seqs.extend(group2_features)
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         seq_group = np.ones(len(all_seqs))
         seq_group[:len(features)] = 0
         tseqs['group'] = seq_group
@@ -971,7 +978,7 @@ class DBBact(Database):
         if ignore_exp is True:
             if exp is None:
                 raise ValueError('Cannot ignore current experiment when exp=None. Please explicitly specify ignore_exp=[ID1,ID2...]')
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
                 ignore_exp = []
@@ -1075,7 +1082,7 @@ class DBBact(Database):
             term = term[1:]
         all_seqs = group1.copy()
         all_seqs.extend(group2)
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.exp_metadata['__dbbact_sequence_annotations'], exp.exp_metadata['__dbbact_annotations'])
+        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         seq_group = np.ones(len(all_seqs))
         seq_group[:len(group1)] = 0
         tseqs['group'] = seq_group
@@ -1193,19 +1200,18 @@ class DBBact(Database):
         exp_features = list(exp.feature_metadata.index.values)
 
         # add all annotations to experiment if not already added
-        if '__dbbact_sequence_terms' not in exp.exp_metadata:
-            self.add_all_annotations_to_exp(exp, max_id=max_id)
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
 
         # if ignore exp is True, it means we should ignore the current experiment
         if ignore_exp is True:
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
-        all_annotations = exp.exp_metadata['__dbbact_annotations']
-        seq_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
+        all_annotations = exp.databases['dbbact']['annotations']
+        seq_annotations = exp.databases['dbbact']['sequence_annotations']
         if term_type == 'term':
             feature_terms = self.db._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'parentterm':
@@ -1323,14 +1329,13 @@ class DBBact(Database):
 
         # get the annotations
         if exp is not None:
-            if '__dbbact_sequence_terms' not in exp.exp_metadata:
-                # if annotations not yet in experiment - add them
-                self.add_all_annotations_to_exp(exp, max_id=max_id)
+            # if annotations not yet in experiment - add them
+            self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
             # and filter only the ones relevant for features
-            sequence_terms = exp.exp_metadata['__dbbact_sequence_terms']
-            sequence_annotations = exp.exp_metadata['__dbbact_sequence_annotations']
-            annotations = exp.exp_metadata['__dbbact_annotations']
-            term_info = exp.exp_metadata['__dbbact_term_info']
+            sequence_terms = exp.databases['dbbact']['sequence_terms']
+            sequence_annotations = exp.databases['dbbact']['sequence_annotations']
+            annotations = exp.databases['dbbact']['annotations']
+            term_info = exp.databases['dbbact']['term_info']
             if features is None:
                 features = exp.feature_metadata.index.values
         else:
@@ -1363,7 +1368,7 @@ class DBBact(Database):
         if ignore_exp is True:
             if exp is None:
                 raise ValueError('Cannot use ignore_exp=True when exp is not supplied')
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
                 logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
