@@ -1880,3 +1880,37 @@ class DBAccess():
             # force user to select
             return None
         return res['region']
+
+    def remove_features_from_annotation(self, features, data):
+        '''remove a set of features from a given annotation
+        Tries to remove the features from the annotation using the username/password from the config file.
+        A user can only change annotations he created or anonymous annotations.
+        Otherwise, an error will be returned
+
+        Parameters
+        ----------
+        features: list of str
+            the features to remove from the annotation
+        data : dict
+            The annotationdetails to remove the features from (using the 'annotationid' key)
+
+        Returns
+        -------
+        str:
+            empty if ok, non empty string if error encountered
+        '''
+        if 'annotationid' not in data:
+            return 'No annotationID for selected annotation'
+        if len(features) == 0:
+            return 'No sequences selected to delete from annotation'
+        annotationid = data['annotationid']
+        rdata = {}
+        rdata['annotationid'] = annotationid
+        rdata['sequences'] = features
+        res = self._post('annotations/delete_sequences_from_annotation', rdata)
+        if res.status_code != 200:
+            msg = 'Delete sequeces from annotations failed. error %s' % res.content
+            logger.warn(msg)
+            return msg
+        logger.info('%d sequences removed from annotation %d deleted' % (len(features), annotationid))
+        return ''

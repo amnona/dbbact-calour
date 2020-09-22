@@ -13,7 +13,7 @@ Functions
    DBBact.version
    DBBact.get_seq_annotation_strings
    DBBact.delete_annotation
-   DBBact.remove_feature_from_annotation
+   DBBact.remove_features_from_annotation
    DBBact.get_annotation_website
    DBBact.show_annotation_info
    DBBact.add_all_annotations_to_exp
@@ -126,8 +126,8 @@ class DBBact(Database):
     def delete_annotation(self, *kargs, **kwargs):
         return self.db.delete_annotation(*kargs, **kwargs)
 
-    def remove_feature_from_annotation(self, *kargs, **kwargs):
-        return self.db.remove_feature_from_annotation(*kargs, **kwargs)
+    def remove_features_from_annotation(self, *kargs, **kwargs):
+        return self.db.remove_features_from_annotation(*kargs, **kwargs)
 
     def get_annotation_website(self, annotation):
         '''Get the database website address of information about the annotation.
