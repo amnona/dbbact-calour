@@ -76,19 +76,23 @@ class DBAccess():
         self.username = username
         self.password = password
 
-        # check compatibility with dbBact server supported versions
-        res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
-        if res is None:
-            logger.warn('Could not validate dbbact_calour_version')
-            return
-        if 'min_version' in res:
-            if res['min_version'] > self.version():
-                logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
+        try:
+            # check compatibility with dbBact server supported versions
+            res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
+            if res is None:
+                logger.warn('Could not validate dbbact_calour_version')
                 return
-        if 'current_version' in res:
-            if res['current_version'] > self.version():
-                logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
-                logger.warn('(Current dbbact_calour version: %s)' % self.version())
+            if 'min_version' in res:
+                if res['min_version'] > self.version():
+                    logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
+                    return
+            if 'current_version' in res:
+                if res['current_version'] > self.version():
+                    logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
+                    logger.warn('(Current dbbact_calour version: %s)' % self.version())
+        except Exception as err:
+            logger.error('Connection to dbBact failed. Error: %s' % err)
+            return
 
     def version(self):
         return __version_numeric__
@@ -285,7 +289,7 @@ class DBAccess():
             cdesc += ')'
         return cdesc
 
-    def get_seq_annotation_strings(self, sequence, max_id=None, get_summary=True):
+    def get_seq_annotation_strings(self, sequence, max_id=None, get_summary=True, sort_order=('other', 'contamination', 'diffexp', 'dominant', 'common')):
         '''Get nice string summaries of annotations for a given sequence
 
         Parameters
@@ -297,6 +301,9 @@ class DBAccess():
         get_summary: bool, optional
             True (default) to get summary of all annotations in the first 3 results of the function (see output details)
             False to just get the annotations
+        sort_order: list of str or None, optional
+            The order of the annotations based on the annotation type. All types not specified in the list are returned last
+            If None, do not sort.
 
         Returns
         -------
@@ -355,9 +362,22 @@ class DBAccess():
             # shortdesc.append(({'annotationtype': 'other', 'sequence': sequence}, summary))
 
         # and get all the annotations for the feature
+        # first prepare the sort order
+        if sort_order is None:
+            sort_order = []
+        sort_order_dict = {}
+        for idx, ctype in enumerate(sort_order):
+            sort_order_dict[ctype] = idx
+        max_idx = idx
+        # now iterate over annotations and create a list with the sort order (for later sorting)
+        annotation_sort_list = []
         for cann in annotations:
             cdesc = self.get_annotation_string(cann)
-            shortdesc.append((cann, cdesc))
+            ctype = cann.get('annotationtype', 'NA')
+            annotation_sort_list.append([sort_order_dict.get(ctype, max_idx+1),(cann, cdesc)])
+        annotation_sort_list = [x for pos,x in sorted(annotation_sort_list, key=lambda y: y[0])]
+        shortdesc.extend(annotation_sort_list)
+
         return shortdesc
 
     def _get_exp_annotations(self, annotations):
