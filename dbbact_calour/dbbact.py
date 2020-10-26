@@ -47,6 +47,7 @@ from . import __version_numeric__
 from calour.util import get_config_value
 from calour.database import Database
 from calour.experiment import Experiment
+from calour.amplicon_experiment import AmpliconExperiment
 from calour.util import _to_list
 
 logger = getLogger(__name__)
@@ -642,10 +643,10 @@ class DBBact(Database):
 
         Returns
         -------
-        Experiment with features (from exp) as columns, annotations cotaining terms as rows
+        calour.AmpliconExperiment with features (from exp) as columns, annotations cotaining terms as rows
         '''
         tmat, tanno, tseqs = self.db.get_term_annotations(term, list(exp.feature_metadata.index.values), exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
-        newexp = Experiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
+        newexp = AmpliconExperiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
         newexp = newexp.cluster_features(1)
         newexp = newexp.sort_by_metadata(field='expid', axis='f')
         newexp.plot(feature_field='annotation', gui='qt5', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=False)
@@ -672,8 +673,8 @@ class DBBact(Database):
 
         Returns
         -------
-        calour.Experiment
-            with rows as annotations, columns as features from the 2 groups
+        calour.AmpliconExperiment
+            with columns as annotations, rows as features from the 2 groups
         '''
         if term[0] == '-':
             term = term[1:]
@@ -686,7 +687,7 @@ class DBBact(Database):
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
         tseqs['group'] = seq_group
-        newexp = Experiment(tmat.T, sample_metadata=tanno, feature_metadata=tseqs)
+        newexp = AmpliconExperiment(tmat.T, sample_metadata=tanno, feature_metadata=tseqs)
         # newexp = newexp.cluster_features(1)
         newexp = newexp.cluster_data(axis='s')
         # newexp = newexp.sort_by_metadata(field='expid', axis='s')
