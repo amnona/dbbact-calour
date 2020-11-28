@@ -29,6 +29,9 @@ jobs:
       - name: delete additional ontology files
         run: find dbbact_calour/data/ -type f -not -name 'other.ontology.*' -delete
 
+      - name: delete github actions (we don't want recursive)
+      - run: rm -r .github/workflows/
+
       - name: Pushes to another repository
         id: push_directory
         uses: amnona/github-action-push-to-another-repository@master
