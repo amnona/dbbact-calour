@@ -463,7 +463,7 @@ class DBAccess():
         return feature_terms
 
     def get_annotation_term_counts(self, annotations, exp_annotations=None, score_method='all_mean', use_term_pairs=False):
-        '''Get the annotation type corrected count for all terms in annotations
+        '''Get the annotation type corrected count (score) for all terms in annotations
 
         Parameters
         ----------
@@ -1225,6 +1225,7 @@ class DBAccess():
             for cdetail in cannotation['details']:
                 cterm = cdetail[1]
                 term_exps[cterm].add(cannotation['expid'])
+
         # remove the ones appearing in not enough experiments
         remove_set = set()
         for cterm, cexps in term_exps.items():

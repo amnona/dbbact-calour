@@ -37,7 +37,7 @@ jobs:
         with:
           source-directory: '.'
           destination-github-username: 'amnona'
-          destination-repository-name: 'test_git_action'
+          destination-repository-name: 'dbbact-calour-core'
           target-branch: main
           user-email: amnonim@gmail.com
           commit-message: See ORIGIN_COMMIT
