@@ -10,6 +10,17 @@
 
 from setuptools import find_packages, setup
 
+import re
+import ast
+
+
+# version parsing from __init__ pulled from Flask's setup.py
+# https://github.com/mitsuhiko/flask/blob/master/setup.py
+_version_re = re.compile(r'__version__\s+=\s+(.*)')
+
+with open('dbbact_calour/__init__.py', 'rb') as f:
+    hit = _version_re.search(f.read().decode('utf-8')).group(1)
+    version = str(ast.literal_eval(hit))
 
 classifiers = [
     'Development Status :: 2 - Pre-Alpha',
@@ -36,7 +47,7 @@ with open('README.md') as f:
 keywords = 'microbiome calour dbbact database analysis bioinformatics',
 
 setup(name='dbbact-calour',
-      version=0.1,
+      version=version,
       license='BSD',
       description=description,
       long_description=long_description,
