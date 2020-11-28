@@ -31,15 +31,16 @@ classifiers = [
     'Topic :: Scientific/Engineering :: Bio-Informatics',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
     'Operating System :: Unix',
     'Operating System :: POSIX',
     'Operating System :: MacOS :: MacOS X',
     'Operating System :: Microsoft :: Windows']
 
 
-description = 'dbbact-calour is a Calour interface for dbBact (dbbact.org)'
+description = 'dbbact-calour is a Calour (https://github.com/biocore/calour) interface for dbBact (dbbact.org)'
 
 with open('README.md') as f:
     long_description = f.read()
@@ -55,10 +56,11 @@ setup(name='dbbact-calour',
       classifiers=classifiers,
       author="calour development team",
       maintainer="calour development team",
-      url='http://dbbact.org',
+      url='https://github.com/amnona/dbbact-calour',
       test_suite='nose.collector',
       packages=find_packages(),
       package_data={'dbbact_calour': ['data/*.pickle', 'log.cfg', 'ui/*.ui']},
+      python_requires='>=3.6',
       install_requires=[
           'numpy',
           'scipy',
