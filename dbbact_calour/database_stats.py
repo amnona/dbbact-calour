@@ -3,7 +3,7 @@ from logging import getLogger, basicConfig
 
 import numpy as np
 
-import dsfdr
+from calour.dsfdr import dsfdr
 
 logger = getLogger(__name__)
 basicConfig(format='%(levelname)s:%(message)s')
@@ -128,7 +128,7 @@ numpy.Array where rows are features (ordered like the dataframe), columns are fe
             fs_array[:, terms[cterm]] += cval * data[:, idx]
 
     # get the differentially abundant terms between the two sample groups
-    keep, odif, pvals = dsfdr.dsfdr(fs_array.transpose(), labels, transform_type=None, alpha=alpha, fdr_method=fdr_method)
+    keep, odif, pvals, qvals = dsfdr(fs_array.transpose(), labels, transform_type=None, alpha=alpha, fdr_method=fdr_method)
 
 
 def _get_all_term_counts(features, feature_annotations, annotations, ignore_exp=None, score_method='all_mean'):

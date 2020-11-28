@@ -28,12 +28,12 @@ classifiers = [
     'Operating System :: Microsoft :: Windows']
 
 
-description = 'dbbact-calour is a calour interface to dbBact'
+description = 'dbbact-calour is a Calour interface for dbBact (dbbact.org)'
 
 with open('README.md') as f:
     long_description = f.read()
 
-keywords = 'microbiome calur dbbact database analysis bioinformatics',
+keywords = 'microbiome calour dbbact database analysis bioinformatics',
 
 setup(name='dbbact-calour',
       version=0.1,
@@ -49,14 +49,16 @@ setup(name='dbbact-calour',
       packages=find_packages(),
       package_data={'dbbact_calour': ['data/*.pickle', 'log.cfg', 'ui/*.ui']},
       install_requires=[
-          # 'pandas',
-          # 'pyqt5',
-          # 'calour'
-          ],
+          'numpy',
+          'scipy',
+          'pandas',
+          'calour',
+      ],
       extras_require={'test': ["nose", "pep8", "flake8"],
                       'coverage': ["coverage"],
                       'doc': ["Sphinx >= 1.4"]},
-      entry_points={
-          'console_scripts': [
-              'calour=calour.cli:cmd',
-          ]})
+      # entry_points={
+      #     'console_scripts': [
+      #         'calour=calour.cli:cmd',
+      #     ]}
+      )

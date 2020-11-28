@@ -25,7 +25,7 @@ from pkg_resources import resource_filename
 import numpy as np
 import pandas as pd
 
-from .dsfdr import dsfdr
+from calour.dsfdr import dsfdr
 from .term_pairs import get_enrichment_score
 
 from . import __version_numeric__
@@ -1259,7 +1259,7 @@ class DBAccess():
         labels[:feature_array.shape[1]] = 1
 
         # find which terms are significantly enriched in either of the two feature groups
-        keep, odif, pvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+        keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
         keep = np.where(keep)[0]
         if len(keep) == 0:
             logger.info('no enriched terms found')
@@ -1269,6 +1269,7 @@ class DBAccess():
         all_feature_array = all_feature_array * 100
         odif = odif[keep]
         pvals = pvals[keep]
+        qvals = qvals[keep]
 
         # if sigterm, convert enriched annotations to the terms in them and count over terms
         if term_type == 'sigterm':
@@ -1300,6 +1301,7 @@ class DBAccess():
         orig_term_list = orig_term_list[si]
         odif = odif[si]
         pvals = pvals[si]
+        qvals = qvals[si]
         all_feature_array = all_feature_array[:, si]
 
         # get the per-term enriched experiments count if needed
@@ -1841,7 +1843,7 @@ class DBAccess():
         labels[:len(g1features)] = 1
 
         # find which terms are significantntly enriched in either of the two feature groups
-        keep, odif, pvals = dsfdr(tmat.T, labels, **kwargs)
+        keep, odif, pvals, qvals = dsfdr(tmat.T, labels, **kwargs)
 
         # count enriched experiments
         enriched_experiments = defaultdict(int)
