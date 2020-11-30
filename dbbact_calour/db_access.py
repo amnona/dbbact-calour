@@ -20,7 +20,7 @@ import requests
 from collections import defaultdict
 from logging import getLogger, NOTSET, basicConfig
 from logging.config import fileConfig
-from pkg_resources import resource_filename
+from pkg_resources import resource_filename, parse_version
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ import pandas as pd
 from calour.dsfdr import dsfdr
 from .term_pairs import get_enrichment_score
 
-from . import __version_numeric__
+from . import __version__
 
 logger = getLogger(__name__)
 
@@ -83,11 +83,11 @@ class DBAccess():
                 logger.warn('Could not validate dbbact_calour_version')
                 return
             if 'min_version' in res:
-                if res['min_version'] > self.version():
+                if parse_version(res['min_version']) > parse_version(self.version()):
                     logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
                     return
             if 'current_version' in res:
-                if res['current_version'] > self.version():
+                if parse_version(res['current_version']) > parse_version(self.version()):
                     logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
                     logger.warn('(Current dbbact_calour version: %s)' % self.version())
         except Exception as err:
@@ -95,7 +95,13 @@ class DBAccess():
             return
 
     def version(self):
-        return __version_numeric__
+        '''Get the dbbact version
+
+        Returns
+        -------
+        version: str
+        '''
+        return __version__
 
     def _post(self, api, rdata):
         '''POST a request to dbBact using authorization parameters

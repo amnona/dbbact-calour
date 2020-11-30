@@ -9,7 +9,7 @@ logger = getLogger(__name__)
 basicConfig(format='%(levelname)s:%(message)s')
 
 
-def sample_enrichment(exp_features, group1_data, group2_data,db_annotations, db_sequence_annotations,
+def sample_enrichment(exp_features, group1_data, group2_data, db_annotations, db_sequence_annotations,
                       term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1):
     '''Get the list of enriched terms for all bacteria between two groups.
 

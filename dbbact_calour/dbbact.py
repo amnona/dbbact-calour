@@ -43,7 +43,7 @@ import scipy.stats
 
 from .db_access import DBAccess
 from .term_pairs import get_enrichment_score, get_terms
-from . import __version_numeric__
+from . import __version__
 from calour.util import get_config_value
 from calour.database import Database
 from calour.experiment import Experiment
@@ -86,13 +86,13 @@ class DBBact(Database):
         self.web_interface = web_interface
 
     def version(self):
-        '''Get the dbbact-calour interface version as a number
+        '''Get the dbbact-calour interface version
 
         Returns
         -------
-        version: float
+        version: str
         '''
-        return __version_numeric__
+        return __version__
 
     def get_seq_annotation_strings(self, *kargs, **kwargs):
         '''Get a list of strings describing the sequence annotations, and the annotations details

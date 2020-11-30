@@ -23,9 +23,9 @@ with open('dbbact_calour/__init__.py', 'rb') as f:
     version = str(ast.literal_eval(hit))
 
 classifiers = [
-    'Development Status :: 2 - Pre-Alpha',
+    'Development Status :: 4 - Beta',
     'License :: OSI Approved :: BSD License',
-    'Environment :: Console',
+    'Environment :: Plugins',
     'Topic :: Software Development :: Libraries :: Application Frameworks',
     'Topic :: Scientific/Engineering',
     'Topic :: Scientific/Engineering :: Bio-Informatics',
@@ -70,8 +70,4 @@ setup(name='dbbact-calour',
       extras_require={'test': ["nose", "pep8", "flake8"],
                       'coverage': ["coverage"],
                       'doc': ["Sphinx >= 1.4"]},
-      # entry_points={
-      #     'console_scripts': [
-      #         'calour=calour.cli:cmd',
-      #     ]}
       )

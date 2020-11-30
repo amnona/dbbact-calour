@@ -1,0 +1,9 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "1.0.0"
+update_changelog_on_bump = true
+tag_format = "v$version"
+version_files = [
+    "dbbact_calour/__init__.py:__version__",
+    "setup.py:version"
+]
