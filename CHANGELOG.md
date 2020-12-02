@@ -1,3 +1,9 @@
+## v1.1.0 (2020-12-02)
+
+### Feat
+
+- **DBBact**: add rank_enrichment() to identify terms correlated with some per-feature stat
+
 ## v1.0.4 (2020-12-02)
 
 ### Fix
