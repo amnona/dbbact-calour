@@ -1383,8 +1383,9 @@ class DBBact(Database):
                 fs_array[idx, terms[cterm]] = cval
 
         # create the new experiment with features x terms
+        values = exp.feature_metadata[field].values
         sm = deepcopy(exp.feature_metadata)
-        sm['_value_to_correlate'] = values
+        sm[field] = values
         sorted_term_list = sorted(terms, key=terms.get)
         fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
         fm['num_features'] = [term_features[d] for d in fm.index]
@@ -1392,7 +1393,7 @@ class DBBact(Database):
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
 
         # get the correlated terms for the value supplied
-        dd = newexp.correlation('_value_to_correlate', fdr_method=fdr_method, alpha=alpha, method=method)
+        dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method)
         return dd
 
     def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
