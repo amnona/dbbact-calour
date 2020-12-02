@@ -1,3 +1,9 @@
+## v1.1.1 (2020-12-02)
+
+### Fix
+
+- **DBBact**: fix error in rank_enrichment
+
 ## v1.1.0 (2020-12-02)
 
 ### Feat
