@@ -1,3 +1,9 @@
+## v1.0.4 (2020-12-02)
+
+### Fix
+
+- remove docs for smaller install
+
 ## v1.0.3 (2020-12-02)
 
 ### Fix
