@@ -27,6 +27,7 @@ Functions
    DBBact.plot_term_annotations_venn
    DBBact.plot_term_venn_all
    DBBact.sample_enrichment
+   DBBact.get_wordcloud_stats
    DBBact.draw_wordcloud
    DBBact.get_enrichment_score
    DBBact.show_enrichment_qt5
@@ -1406,7 +1407,7 @@ class DBBact(Database):
         dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method)
         return dd
 
-    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
+    def get_wordcloud_stats(self, exp=None, features=None, ignore_exp=None, freq_weighted=False, focus_terms=None, threshold=None, max_id=None):
         '''Draw a word_cloud for a given set of sequences
 
         Parameters
@@ -1417,24 +1418,14 @@ class DBBact(Database):
         features: list of str or None, optional
             None to use the features from exp. Otherwise, a list of features ('ACGT' sequences) that is a subset of the features in exp (if exp is supplied)
             Note: if exp is None, must provide features.
-        term_type: str, optional
-            What score to use for the word cloud. Options are:
-            'recall': sizes are based on the recall (fraction of dbbact term containing annotations that contain the sequences)
-            'precision': sizes are based on the precision (fraction of sequence annotations of the experiment sequences that contain the term)
-            'fscore': a combination of recall and precition (r*p / (r+p))
         ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment (if exp is supplied)
             None (default) to use annotations from all experiments including the current one
-        width, height: int, optional
-            The width and heigh of the figure (high values are slower but nicer resolution for publication)
-            If inside a jupyter notebook, use savefig(f, dpi=600)
         freq_weighted: bool, optional
             Only when supplying exp
             True to weight each bacteria by it's mean frequency in exp.data
             NOT IMPLEMENTED YET!!!
-        relative_scaling: float, optional
-            the effect of the score on the word size. 0.5 is a good compromise (passed to wordcloud.Wordcloud())
         focus_terms: list of str or None, optional
             if not None, use only annotations containing all terms in focus_terms list.
             for example, if focus_terms=['homo sapiens', 'feces'], will only draw the wordcloud for annotations of human feces
@@ -1446,15 +1437,8 @@ class DBBact(Database):
 
         Returns
         -------
-        matplotlib.figure
+        fscores, recall, precision, term_count, reduced_f
         '''
-        import matplotlib.pyplot as plt
-        try:
-            from wordcloud import WordCloud
-        except Exception as err:
-            print(err)
-            raise ValueError("Error importing wordcloud module. Is it installed? If not, install it using: pip install git+git://github.com/amueller/word_cloud.git")
-
         # get the annotations
         if exp is not None:
             # if annotations not yet in experiment - add them
@@ -1509,6 +1493,58 @@ class DBBact(Database):
 
         # calculate the recall, precision, fscore for each term
         fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
+        return fscores, recall, precision, term_count, reduced_f
+
+    def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
+        '''Draw a word_cloud for a given set of sequences
+
+        Parameters
+        ----------
+        exp: calour.Experiment or None, optional
+            The experiment containing the sequences (features) of interest.
+            None to not ise the experiment (get the annotations for the features supplied from dbbact and use them)
+        features: list of str or None, optional
+            None to use the features from exp. Otherwise, a list of features ('ACGT' sequences) that is a subset of the features in exp (if exp is supplied)
+            Note: if exp is None, must provide features.
+        term_type: str, optional
+            What score to use for the word cloud. Options are:
+            'recall': sizes are based on the recall (fraction of dbbact term containing annotations that contain the sequences)
+            'precision': sizes are based on the precision (fraction of sequence annotations of the experiment sequences that contain the term)
+            'fscore': a combination of recall and precition (r*p / (r+p))
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment (if exp is supplied)
+            None (default) to use annotations from all experiments including the current one
+        width, height: int, optional
+            The width and heigh of the figure (high values are slower but nicer resolution for publication)
+            If inside a jupyter notebook, use savefig(f, dpi=600)
+        freq_weighted: bool, optional
+            Only when supplying exp
+            True to weight each bacteria by it's mean frequency in exp.data
+            NOT IMPLEMENTED YET!!!
+        relative_scaling: float, optional
+            the effect of the score on the word size. 0.5 is a good compromise (passed to wordcloud.Wordcloud())
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing all terms in focus_terms list.
+            for example, if focus_terms=['homo sapiens', 'feces'], will only draw the wordcloud for annotations of human feces
+        threshold: float or None, optional
+            if not None, show in word cloud only terms with p-value <= threshold (using the null model of binomial with term freq. as observed in all dbbact)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+
+
+        Returns
+        -------
+        matplotlib.figure
+        '''
+        import matplotlib.pyplot as plt
+        try:
+            from wordcloud import WordCloud
+        except Exception as err:
+            print(err)
+            raise ValueError("Error importing wordcloud module. Is it installed? If not, install it using: pip install git+git://github.com/amueller/word_cloud.git")
+
+        fscores, recall, precision, term_count, reduced_f = self.get_wordcloud_stats(exp=exp, features=features, ignore_exp=ignore_exp, freq_weighted=freq_weighted, focus_terms=focus_terms, threshold=threshold, max_id=max_id)
 
         logger.debug('draw_cloud for %d words' % len(fscores))
         if len(fscores) == 0:
@@ -1526,6 +1562,7 @@ class DBBact(Database):
 
         # weight by data frequency if needed
         if freq_weighted:
+            raise ValueError('freq weighting not supported yet')
             new_score = defaultdict(float)
             for cseq in sequence_annotations:
                 pass
