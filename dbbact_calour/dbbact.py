@@ -94,6 +94,16 @@ class DBBact(Database):
         '''
         return __version__
 
+    def set_log_level(self, level='WARNING'):
+        '''Set the log level for the dbbact-calour messages
+
+        Parameters
+        ----------
+        level: str or int, optional
+            can be 'DEBUG'/'INFO'/'WARNING'/'ERROR' or int in the range of 0 (full debug) to 50 (only errors)
+        '''
+        logger.setLevel(level)
+
     def get_seq_annotation_strings(self, *kargs, **kwargs):
         '''Get a list of strings describing the sequence annotations, and the annotations details
 
