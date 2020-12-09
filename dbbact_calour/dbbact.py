@@ -1192,22 +1192,82 @@ class DBBact(Database):
 
         Returns
         -------
-        pandas.DataFrame with  info about significantly enriched terms. columns:
-            feature : str the feature
-            pval : the p-value for the enrichment (float)
-            odif : the effect size (float)
-            observed : the number of observations of this term in group1 (int)
-            expected : the expected (based on all features) number of observations of this term in group1 (float)
-            frac_group1 : fraction of total terms in group 1 which are the specific term (float)
-            frac_group2 : fraction of total terms in group 2 which are the specific term (float)
-            num_group1 : number of total terms in group 1 which are the specific term (float)
-            num_group2 : number of total terms in group 2 which are the specific term (float)
-            description : the term (str)
-        numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
-            for term in feature
-        pandas.DataFrame with info about the features used. columns:
-            group: int the group (1/2) to which the feature belongs
-            sequence: str
+        calour.Experiment
+            with significanly enriched terms as features (and samples reamin samples).
+            Data indicates the score for term in sample
+            feature_metadata contains 'num_features' field which indicates the number of features that were associated with the term
+
+        # pandas.DataFrame with  info about significantly enriched terms. columns:
+        #     feature : str the feature
+        #     pval : the p-value for the enrichment (float)
+        #     odif : the effect size (float)
+        #     observed : the number of observations of this term in group1 (int)
+        #     expected : the expected (based on all features) number of observations of this term in group1 (float)
+        #     frac_group1 : fraction of total terms in group 1 which are the specific term (float)
+        #     frac_group2 : fraction of total terms in group 2 which are the specific term (float)
+        #     num_group1 : number of total terms in group 1 which are the specific term (float)
+        #     num_group2 : number of total terms in group 2 which are the specific term (float)
+        #     description : the term (str)
+        # numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
+        #     for term in feature
+        # pandas.DataFrame with info about the features used. columns:
+        #     group: int the group (1/2) to which the feature belongs
+        #     sequence: str
+        '''
+        newexp = self.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, min_appearances=min_appearances, score_method=score_method, freq_weight=freq_weight, use_term_pairs=use_term_pairs, max_id=max_id, axis='s')
+        # get the differentially abundant terms between the two sample groups
+        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
+        return dd
+
+    def sample_term_scores(self, exp, term_type='term', ignore_exp=None, min_appearances=3, score_method='all_mean', freq_weight='log', use_term_pairs=False, max_id=None, axis='s'):
+        '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
+
+        It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
+        (where the numbers are how strong is the term associated with the feature based on database annotations using score_method).
+        A differntial abundance test (using dsFDR multiple hypothesis correction) is then performed on the resulting sample X term matrix.
+
+        Parameters
+        ----------
+        exp : calour.Experiment
+            The experiment to compare the features to
+        term_type : str or None (optional)
+            The type of annotation data to test for enrichment
+            options are:
+            'term' - ontology terms associated with each feature.
+            'parentterm' - ontology terms including parent terms associated with each feature.
+            'annotation' - the full annotation strings associated with each feature
+            'combined' - combine 'term' and 'annotation'
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment
+            None (default) to use annotations from all experiments including the current one
+        min_appearances : int (optional)
+            The minimal number of times a term appears in order to include in output list.
+        score_method : str (optional)
+            The score method used for calculating the term score. Options are:
+            'all_mean' (default): mean over each experiment of all annotations containing the term
+            'sum' : sum of all annotations (experiment not taken into account)
+            'card_mean': use a null model keeping the number of annotations per each bacteria
+        freq_weight : str (optional)
+            How to incorporate the frequency of each feature (in a sample) into the term count for the sample. options:
+                'linear' : use the frequency
+                'log' : use the log2 of the frequency
+                'binary' : use the presence/absence of the feature
+                'rank' : use the rank of each feature across samples
+        Use_term_pairs: bool, optional
+            True to get all term pair annotations (i.e. human+feces etc.)
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+        axis: str or int, optional
+            's' or 1 to return per-sample term scores experiment
+            'f' or 0 to return per-feature term scores experiment
+
+        Returns
+        -------
+        calour.Experiment
+            with terms as features, (is axis='s', samples remain samples, if axis='f' samples are the features).
+            Data indicates the score for term in sample / feature
+            feature_metadata contains 'num_features' field which indicates the number of features that were associated with the term
         '''
         exp_features = list(exp.feature_metadata.index.values)
 
@@ -1222,12 +1282,15 @@ class DBBact(Database):
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
+        # get the term/annotation scores
+        # we store it in feature_terms:
+        # dict of {feature:str, list of tuples of (term:str, score:float)}, key is feature, value is list of (term, score)
         all_annotations = exp.databases['dbbact']['annotations']
         seq_annotations = exp.databases['dbbact']['sequence_annotations']
         if term_type == 'term':
             feature_terms = self.db._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'parentterm':
-            pass
+            raise ValueError('term_type parentterm not supported yet')
         elif term_type == 'annotation':
             feature_terms = self.db._get_all_annotation_string_counts(exp_features, all_anntations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
         elif term_type == 'combined':
@@ -1237,10 +1300,22 @@ class DBBact(Database):
                 if cfeature not in feature_terms:
                     feature_terms[cfeature] = []
                 feature_terms[cfeature].extend(cvals)
+        elif term_type == 'fscore':
+            res = self.get_exp_feature_stats(exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None)
+            feature_terms = defaultdict(list)
+            for cseq, cres in res.items():
+                scores = cres['fscore']
+                reslist = []
+                for cterm, cscore in scores.items():
+                    reslist.append([cterm, cscore])
+                feature_terms[cseq] = reslist
         else:
             raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation", "combined"')
 
         # get all terms. store the index position for each term
+        # store in:
+        # terms: dict of {term(str): pos(int)} - the intended position (in the new results) of each term
+        # term_features dict of {term(str): count(int)} - the number of features containing each term
         terms = {}
         term_features = defaultdict(int)
         cpos = 0
@@ -1253,11 +1328,8 @@ class DBBact(Database):
 
         logger.debug('found %d terms for all features' % len(terms))
 
-        # create the term x sample array
-        fs_array = np.zeros([exp.data.shape[0], len(terms)])
-
-        data = exp.get_data(sparse=False, copy=True)
         # how to weight the frequency of each bacteria
+        data = exp.get_data(sparse=False, copy=True)
         if freq_weight == 'log':
             data[data < 1] = 1
             data = np.log2(data)
@@ -1269,29 +1341,47 @@ class DBBact(Database):
             logger.debug('ranking the data')
             for ccol in range(np.shape(data)[1]):
                 data[:, ccol] = scipy.stats.rankdata(data[:, ccol])
-
         else:
             raise ValueError('unknown freq_weight option %s. Can use ["log", "binary","linear"].')
 
-        # iterate over all features and add to all terms associated with the feature
-        for idx, cfeature in enumerate(exp_features):
-            fterms = feature_terms[cfeature]
-            for cterm, cval in fterms:
-                fs_array[:, terms[cterm]] += cval * data[:, idx]
+        if axis == 's':
+            # create the sample x term results array
+            fs_array = np.zeros([exp.data.shape[0], len(terms)])
 
-        # create the new experiment with samples x terms
-        sm = deepcopy(exp.sample_metadata)
-        sorted_term_list = sorted(terms, key=terms.get)
-        fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
-        fm['num_features'] = [term_features[d] for d in fm.index]
+            # iterate over all features and add to all terms associated with the feature
+            for idx, cfeature in enumerate(exp_features):
+                fterms = feature_terms[cfeature]
+                for cterm, cval in fterms:
+                    fs_array[:, terms[cterm]] += cval * data[:, idx]
+
+            # create the new experiment with samples x terms
+            sm = deepcopy(exp.sample_metadata)
+            sorted_term_list = sorted(terms, key=terms.get)
+            fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
+            fm['num_features'] = [term_features[d] for d in fm.index]
+        elif axis == 'f':
+            # create the sample x term results array
+            fs_array = np.zeros([exp.data.shape[1], len(terms)])
+
+            # iterate over all features and add to all terms associated with the feature
+            for idx, cfeature in enumerate(exp_features):
+                fterms = feature_terms[cfeature]
+                for cterm, cval in fterms:
+                    fs_array[idx, terms[cterm]] = cval
+
+            # create the new experiment with samples x terms
+            sm = deepcopy(exp.feature_metadata)
+            sorted_term_list = sorted(terms, key=terms.get)
+            fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
+            fm['num_features'] = [term_features[d] for d in fm.index]
+        else:
+            raise ValueError('axis %s not supported' % axis)
+
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
-
-        # get the differentially abundant terms between the two sample groups
-        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
-        return dd
+        return newexp
 
     def rank_enrichment(self, exp, field, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', method='spearman', alpha=0.1, use_term_pairs=False, max_id=None):
-        '''Get the list of terms significanly correlated with the values for all bacteria.
+        '''Get the list of terms significanly correlated/anti-correlated with the values in field for all bacteria.
 
         Identify terms correlated with the values by calculating for each term the term score for each feature, and correlating this score/feature vector with the values vector
 
@@ -1340,75 +1430,13 @@ class DBBact(Database):
             with singnificantly correlated terms
             terms are features, sequences are samples
         '''
-        exp_features = list(exp.feature_metadata.index.values)
-
-        # add all annotations to experiment if not already added
-        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
-
-        # if ignore exp is True, it means we should ignore the current experiment
-        if ignore_exp is True:
-            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
-            if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
-            else:
-                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
-
-        all_annotations = exp.databases['dbbact']['annotations']
-        seq_annotations = exp.databases['dbbact']['sequence_annotations']
-        if term_type == 'term':
-            feature_terms = self.db._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
-        elif term_type == 'parentterm':
-            pass
-        elif term_type == 'annotation':
-            feature_terms = self.db._get_all_annotation_string_counts(exp_features, all_anntations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
-        elif term_type == 'combined':
-            feature_terms = self.db._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
-            feature_annotations = self.db._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
-            for cfeature, cvals in feature_annotations.items():
-                if cfeature not in feature_terms:
-                    feature_terms[cfeature] = []
-                feature_terms[cfeature].extend(cvals)
-        else:
-            raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation", "combined"')
-
-        # get all terms. store the index position for each term
-        terms = {}
-        term_features = defaultdict(int)
-        cpos = 0
-        for cfeature, ctermlist in feature_terms.items():
-            for cterm, ccount in ctermlist:
-                if cterm not in terms:
-                    terms[cterm] = cpos
-                    cpos += 1
-                term_features[cterm] += 1
-
-        logger.debug('found %d terms for all features' % len(terms))
-
-        # create the term x feature array
-        fs_array = np.zeros([exp.data.shape[1], len(terms)])
-
-        # iterate over all features and add to all terms associated with the feature
-        for idx, cfeature in enumerate(exp_features):
-            fterms = feature_terms[cfeature]
-            for cterm, cval in fterms:
-                fs_array[idx, terms[cterm]] = cval
-
-        # create the new experiment with features x terms
-        values = exp.feature_metadata[field].values
-        sm = deepcopy(exp.feature_metadata)
-        sm[field] = values
-        sorted_term_list = sorted(terms, key=terms.get)
-        fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
-        fm['num_features'] = [term_features[d] for d in fm.index]
-
-        newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
-
+        newexp = self.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, min_appearances=min_appearances, score_method=score_method, use_term_pairs=use_term_pairs, max_id=max_id, axis='f')
         # get the correlated terms for the value supplied
         dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method)
         return dd
 
     def get_wordcloud_stats(self, exp=None, features=None, ignore_exp=None, freq_weighted=False, focus_terms=None, threshold=None, max_id=None):
-        '''Draw a word_cloud for a given set of sequences
+        '''Get recall/precision/f-scores for a set of features
 
         Parameters
         ----------
@@ -1564,8 +1592,6 @@ class DBBact(Database):
         if freq_weighted:
             raise ValueError('freq weighting not supported yet')
             new_score = defaultdict(float)
-            for cseq in sequence_annotations:
-                pass
 
         # normalize the fractions to a scale max=1
         new_scores = {}
@@ -1595,6 +1621,69 @@ class DBBact(Database):
         plt.axis("off")
         fig.tight_layout()
         return fig
+
+    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None):
+        '''Get the recall/precision/f-score stats for each feature in the experiment
+
+        Parameters
+        ----------
+        exp: calour.AmpliconExperiment
+        ingore_exp: list of str, optional
+            list of experiment ids to ignore in the analysis
+        term_info: dict of {term (str): details {"total_annotations": float, "total_sequences": float}} (see dbbact rest-api /ontology/get_term_stats) or None, optional
+            The statistics about each term. if None, the function will contact dbbact to get the term_info
+        term_types: list of str
+            the terms to calculate enrichment scores for. options are:
+            'single': each single term (i.e. 'feces')
+            'pairs': all term pairs (i.e. 'feces+homo sapiens')
+        threshold: float or None, optional
+            if not None, return only terms that are significantly enriched in the annotations compared to complete database null with p-val <= threshold
+
+        Returns
+        -------
+        dict of {feature(str): {'fscore':, 'recall':, 'precision': , 'term_count':, 'reduced_f': }}
+        fscore: dict of {term(str): fscore(float)}
+        recall: dict of {term(str): recall(float)}
+        precision: dict of {term(str): precision(float)}
+        term_count: dict of {term(str): total experiments(float)}
+            the number of experiments where annotations for each term appear
+        reduced_f
+        '''
+        # if annotations not yet in experiment - add them
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
+        # and filter only the ones relevant for features
+        sequence_annotations = exp.databases['dbbact']['sequence_annotations']
+        annotations = exp.databases['dbbact']['annotations']
+        term_info = exp.databases['dbbact']['term_info']
+
+        # get the current experimentID to ignore if ignore_exp is True
+        if ignore_exp is True:
+            ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
+            if ignore_exp is None:
+                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            else:
+                logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
+        if ignore_exp is None:
+            ignore_exp = []
+
+        # we need to rekey the annotations with an str (old problem...)
+        annotations = {str(k): v for k, v in annotations.items()}
+
+        res = {}
+        num_seqs_not_found = 0
+        for cseq in exp.feature_metadata.index.values:
+            if cseq not in sequence_annotations:
+                num_seqs_not_found += 1
+                continue
+            annotations_list = sequence_annotations[cseq]
+            fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
+            if len(fscore) == 0:
+                continue
+            res[cseq] = {'fscore': fscore, 'precision': precision, 'recall': recall, 'term_count': term_count, 'reduced_f': reduced_f}
+
+        if num_seqs_not_found > 0:
+            logger.warn('%d sequences not found in database data' % num_seqs_not_found)
+        return res
 
     def get_enrichment_score(self, *kargs, **kwargs):
         '''Get f score, recall and precision for set of annotations

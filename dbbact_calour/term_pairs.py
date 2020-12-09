@@ -167,12 +167,17 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 	dict of {term (str): recall(float)}
 	'''
 	# get the term counts for all the terns
+	import itertools
 	debug(1, 'calculating recall')
 	recall = defaultdict(float)
-	all_terms = set()
+	# all_terms = set()
+	termslist = []
 	for cannotation in annotations.values():
 		cterms = get_terms(cannotation, term_types=term_types)
-		all_terms = all_terms.union(set(cterms))
+		termslist.append(cterms)
+		# all_terms = all_terms.union(set(cterms))
+	# we use this as much faster than multiple unions
+	all_terms = set(itertools.chain.from_iterable(termslist))
 	# all_terms_positive = [x[1:] if x[0] == '-' else x for x in all_terms]
 	debug(1, 'total terms in all annotations: %d' % len(all_terms))
 
@@ -195,9 +200,6 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 				continue
 			for cterm in terms:
 				cseq_term_exps[cterm].add(cexp)
-		# if 'whale blow' not in cseq_term_exps:
-		# 	print('*whale blow not found for sequence')
-		# 	print(cseq_term_exps)
 		# and add the normalized count
 		debug(1, 'going over exp list')
 		for cterm, cexplist in cseq_term_exps.items():
