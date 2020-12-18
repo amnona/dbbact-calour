@@ -1,3 +1,15 @@
+## v1.2.0 (2020-12-18)
+
+### Feat
+
+- add fscore option and set fscore as default for ca.add_terms_to_features()
+- add sample_term_scores() method and update rank_enrichment() and sample_enrichment() to use it
+- add set_log_level() to DBBact class
+
+### Refactor
+
+- **DBBact**: move calculation of recall/precision etc. out of wordcloud function to get_wordcloud_stats
+
 ## v1.1.1 (2020-12-02)
 
 ### Fix
