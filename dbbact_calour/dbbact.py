@@ -262,12 +262,12 @@ class DBBact(Database):
             not None to store results in the exp (to save time for multiple queries)
         term_type : str or None (optional)
             The type of terms to return. optional values:
-            None to use default ('seqstring')
+            None to use default ('fscore')
             'annotation': the annotation string for each annotation (i.e. 'higher in fish compared to dogs...')
             'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
             'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
             'contamination': get if bacteria is contaminant or not
-            'fscore': ...
+            'fscore': get the fscore (combination of recall and precision) for each term
         ignore_exp : list of int or None (optional)
             the list of experimentids to ignore (don't take info from them)
         term_method: list of str, optional
@@ -286,7 +286,7 @@ class DBBact(Database):
             key is the feature, value is a dict of the score (value) for each term(key) for this feature
         '''
         if term_type is None:
-            term_type = 'terms'
+            term_type = 'fscore'
         if exp is not None:
             # if annotations not yet in experiment - add them
             self.add_all_annotations_to_exp(exp, max_id=max_id, force=False, **kwargs)
@@ -345,9 +345,8 @@ class DBBact(Database):
                     #     newdesc.append(cterm)
                     #     term_scores[cseq][cterm] += 1
                 new_annotations[cseq] = annotation_terms
-
         # f-score for each term
-        elif term_type == 'fscore':
+        elif term_type == 'fscore' or term_type == 'recall' or term_type == 'precision':
             if ignore_exp is None:
                 ignore_exp = []
             # we need to rekey the annotations with an str (old problem...)
@@ -357,12 +356,18 @@ class DBBact(Database):
                     continue
                 term_scores[cseq] = defaultdict(float)
                 fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, term_types=term_method)
-                if len(fscore) == 0:
+                if term_type == 'fscore':
+                    use_score = fscore
+                elif term_type == 'recall':
+                    use_score = recall
+                elif term_type == 'precision':
+                    use_score = precision
+                if len(use_score) == 0:
                     new_annotations[cseq] = ['NA']
                     continue
-                sorted_fscore = sorted(fscore.items(), key=lambda x: x[1], reverse=True)
-                new_annotations[cseq] = [sorted_fscore[0][0]]
-                term_scores[cseq] = fscore
+                sorted_score = sorted(use_score.items(), key=lambda x: x[1], reverse=True)
+                new_annotations[cseq] = [sorted_score[0][0]]
+                term_scores[cseq] = use_score
         elif term_type == 'parentterms':
             for cseq, term_list in sequence_terms.items():
                 if cseq not in features:
@@ -618,6 +623,7 @@ class DBBact(Database):
         -------
         count
         '''
+        raise ValueError('function depracated')
         exp_features = set(exp.feature_metadata.index.values)
         bad_features = set(features).difference(exp_features)
         if len(bad_features) > 0:
@@ -1237,6 +1243,7 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
+            'fscore' - the fscore for each term (recall/precision)
         ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment

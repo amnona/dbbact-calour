@@ -1083,7 +1083,10 @@ class DBAccess():
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
-    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
+    def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0,
+                        fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, 
+                        # method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
+                        method='card_mean', transform_type=None, numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1161,15 +1164,18 @@ class DBAccess():
             group: int the group (1/2) to which the feature belongs
             sequence: str
         '''
+        # set up the random seed if needed
         if random_seed is not None:
             np.random.seed(random_seed)
 
+        # prepare arrays of the 2 features and the combined features
         g1_features = np.array(list(g1_features))
         g2_features = np.array(list(g2_features))
         exp_features = np.hstack([g1_features, g2_features])
 
         # filter keeping only annotations containing focus_terms (if not None)
         if focus_terms is not None:
+            seq_annotations = seq_annotations.copy()
             focus_terms = set(focus_terms)
             ok_annotations = set()
             for cid, cannotation in all_annotations.items():
@@ -1190,7 +1196,7 @@ class DBAccess():
             feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'parentterm':
             # score for each term including the parent terms (based on the ontology structure) for each term
-            pass
+            raise ValueError('parentterm not supported yet')
         elif term_type == 'annotation':
             # score for each annotation
             feature_terms = self._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
@@ -1231,7 +1237,6 @@ class DBAccess():
             for cdetail in cannotation['details']:
                 cterm = cdetail[1]
                 term_exps[cterm].add(cannotation['expid'])
-
         # remove the ones appearing in not enough experiments
         remove_set = set()
         for cterm, cexps in term_exps.items():
@@ -1261,11 +1266,32 @@ class DBAccess():
         term_list = new_term_list
         logger.debug('removed %d terms' % num_removed)
 
+        # set up the labels for the dsFDR test. 1s for features in the first group, 0 for the second
         labels = np.zeros(all_feature_array.shape[1])
         labels[:feature_array.shape[1]] = 1
 
         # find which terms are significantly enriched in either of the two feature groups
-        keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+        if method == 'card_mean':
+            print('card_mean')
+            # count the total number of annotations per feature
+            per_feature_annotations = np.zeros([len(exp_features)])
+            for idx, cfeature in enumerate(exp_features):
+                per_feature_annotations[idx] = len(seq_annotations[cfeature])
+
+
+            # create the score function so that it normalizes each term by the total number of annotations in all features in the group
+            def _mean_diff_toal_annotations(data, labels, per_feature_annotations=per_feature_annotations):
+                mean0 = np.mean(data[:, labels == 0], axis=1) / np.mean(per_feature_annotations[labels == 0])
+                mean1 = np.mean(data[:, labels == 1], axis=1) / np.mean(per_feature_annotations[labels == 1])
+                tstat = mean1 - mean0
+                return tstat
+
+            # get the significantly enriched terms using the total annotations normalizing function
+            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+        else:
+            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+
+        # keep only terms passing the FDR corrected significance threshold alpha (by using the keep field from dsFDR)
         keep = np.where(keep)[0]
         if len(keep) == 0:
             logger.info('no enriched terms found')
@@ -1302,6 +1328,7 @@ class DBAccess():
             odif = np.array(new_odif)
             pvals = np.array(new_pvals)
 
+        # sort according to effect size
         si = np.argsort(odif)
         term_list = term_list[si]
         orig_term_list = orig_term_list[si]
@@ -1394,6 +1421,7 @@ class DBAccess():
         n_g2 = len(g2_features)
         odif = odif / ((((n_g1 + 1) / 2) + n_g2) - ((n_g2 + 1) / 2))
 
+        # create dataframe for resulting terms.
         res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
         features = list(g1_features)
         features.extend(g2_features)
