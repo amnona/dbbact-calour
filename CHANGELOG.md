@@ -1,3 +1,9 @@
+## v1.3.0 (2020-12-27)
+
+### Feat
+
+- Add UI for term enrichment method
+
 ## v1.2.0 (2020-12-18)
 
 ### Feat
