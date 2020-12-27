@@ -1084,9 +1084,8 @@ class DBAccess():
         return feature_annotations
 
     def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0,
-                        fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, 
-                        # method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
-                        method='card_mean', transform_type=None, numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
+                        fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1,
+                        method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1121,12 +1120,14 @@ class DBAccess():
             'dsfdr' (default): use the discrete FDR correction
             'bhfdr': use Benjamini Hochbert FDR correction
         transform_type: str, optional
-            the data trasformation to use before calculating the dsFDR. For options see dsfdr doc
+            the data trasformation to use before calculating the dsFDR. For options see dsfdr.dsfdr()
         score_method : str (optional)
             The score method used for calculating the term score. Options are:
             'all_mean' (default): mean over each experiment of all annotations containing the term
             'sum' : sum of all annotations (experiment not taken into account)
-            'card_mean': use a null model keeping the number of annotations per each bacteria
+        method: str or None, optional
+            'card_mean': use a null model keeping the number of annotations per each bacteria (useful for comparison to background sequences). NOTE: use transfrom_type=None for this method.
+            otherwise, use as method for dsfdr.dsfdr() (i.e. 'meandiff')
         random_seed: int or None
             int to specify the random seed for numpy.random.
         use_term_pairs: bool, optional
@@ -1272,12 +1273,12 @@ class DBAccess():
 
         # find which terms are significantly enriched in either of the two feature groups
         if method == 'card_mean':
-            print('card_mean')
+            if transform_type is not None:
+                logger.warn('Using card_mean method for dbBact term enrichment but transform_type is not None is not recommended. Set transform_type to None')
             # count the total number of annotations per feature
             per_feature_annotations = np.zeros([len(exp_features)])
             for idx, cfeature in enumerate(exp_features):
                 per_feature_annotations[idx] = len(seq_annotations[cfeature])
-
 
             # create the score function so that it normalizes each term by the total number of annotations in all features in the group
             def _mean_diff_toal_annotations(data, labels, per_feature_annotations=per_feature_annotations):
@@ -1287,8 +1288,10 @@ class DBAccess():
                 return tstat
 
             # get the significantly enriched terms using the total annotations normalizing function
+            logger.debug('card mean transfrom_type=%s' % transform_type)
             keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
         else:
+            logger.debug('other test method=%s transform_type=%s' % (method, transform_type))
             keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
 
         # keep only terms passing the FDR corrected significance threshold alpha (by using the keep field from dsFDR)
@@ -1416,10 +1419,11 @@ class DBAccess():
             # for idx, cterm in enumerate(term_list):
             #     term_list[idx] = term_list[idx] + ' [%d/%d]' % (num_enriched_exps[idx], num_total_exps[idx])
 
-        # normalize the effect size to be in the [-1:1] range (0 for random, -1 / 1 for fully ordered)
-        n_g1 = len(g1_features)
-        n_g2 = len(g2_features)
-        odif = odif / ((((n_g1 + 1) / 2) + n_g2) - ((n_g2 + 1) / 2))
+        # for rank data, normalize the effect size to be in the [-1:1] range (0 for random, -1 / 1 for fully ordered)
+        if transform_type == 'rankdata':
+            n_g1 = len(g1_features)
+            n_g2 = len(g2_features)
+            odif = odif / ((((n_g1 + 1) / 2) + n_g2) - ((n_g2 + 1) / 2))
 
         # create dataframe for resulting terms.
         res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
