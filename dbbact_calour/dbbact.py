@@ -41,6 +41,7 @@ import webbrowser
 import numpy as np
 import pandas as pd
 import scipy.stats
+import matplotlib as mpl
 
 from .db_access import DBAccess
 from .term_pairs import get_enrichment_score, get_terms
@@ -649,24 +650,36 @@ class DBBact(Database):
         res = self.db.get_term_enriched_annotations(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'], seq_annotations=exp.databases['dbbact']['sequence_annotations'], **kwargs)
         return res
 
-    def get_terms_exp(self, exp, term):
-        '''Get an experiment with features (from exp) as columns, annotations cotaining terms as rows
+    def get_terms_exp(self, term, exp, features=None, max_id=None, strip_terms=True):
+        '''Get an experiment with features (from exp) as rows, annotations cotaining terms as columns
 
         Parameters
         ----------
-        exp: Experiment
         term: str
-            The term to get annotations that include one of these terms
+            the term to plot for
+        exp: calour.Experiment
+            the experiment where the analysis should look at
+        features: list of str, optional
+            the list of sequences to get the terms for. If none, use all features in exp
+        max_id: int or None, optional
+            if not None, limit results to annotation ids <= max_id
+        strip_terms: bool, optional
+            if True (default), strip "lower in"/" *" etc. from term. if False, use exact term
 
         Returns
         -------
-        calour.AmpliconExperiment with features (from exp) as columns, annotations cotaining terms as rows
+        calour.AmpliconExperiment
+            with annotations as columns, features as rows
         '''
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, list(exp.feature_metadata.index.values), exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
-        newexp = AmpliconExperiment(tmat, sample_metadata=tseqs, feature_metadata=tanno)
-        newexp = newexp.cluster_features(1)
-        newexp = newexp.sort_by_metadata(field='expid', axis='f')
-        newexp.plot(feature_field='annotation', gui='qt5', yticklabel_kwargs={'rotation': 0}, yticklabel_len=35, cmap='tab20b', norm=None, bary_fields=['expid'], bary_label=False)
+        if strip_terms:
+            if term[0] == '-':
+                term = term[1:]
+            term = term.lstrip('LOWER IN ')
+            term = term.rstrip(' *')
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
+        tmat, tanno, tseqs = self.db.get_term_annotations(term, features, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
+        newexp = AmpliconExperiment(tmat.T, sample_metadata=tanno, feature_metadata=tseqs)
+        return newexp
 
     def show_term_details(self, term, exp, features, group2_features, group1_name='group1', group2_name='group2', max_id=None, **kwargs):
         '''
@@ -693,22 +706,23 @@ class DBBact(Database):
         calour.AmpliconExperiment
             with columns as annotations, rows as features from the 2 groups
         '''
-        if term[0] == '-':
-            term = term[1:]
-        term = term.lstrip('LOWER IN ')
-        term = term.rstrip(' *')
         all_seqs = list(features.copy())
         all_seqs.extend(list(group2_features))
-        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
-        tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         seq_group = [str(group1_name)] * len(features)
         seq_group.extend([str(group2_name)] * len(group2_features))
-        tseqs['group'] = seq_group
-        newexp = AmpliconExperiment(tmat.T, sample_metadata=tanno, feature_metadata=tseqs)
-        # newexp = newexp.cluster_features(1)
+
+        newexp = self.get_terms_exp(term=term, exp=exp, features=all_seqs, max_id=max_id)
+        newexp.feature_metadata['group'] = seq_group
         newexp = newexp.cluster_data(axis='s')
         # newexp = newexp.sort_by_metadata(field='expid', axis='s')
-        newexp.plot(cmap='tab20b', norm=None, barx_fields=['expid'], barx_label=False, bary_fields=['group'], bary_label=True, clim=[0, 32], **kwargs)
+
+        # create the colormap
+        colors = mpl.colors.get_named_colors_mapping()
+        cmap = mpl.colors.ListedColormap([colors['black'], colors['lightblue'], colors['magenta'], colors['pink'], colors['coral'], colors['lime'], colors['gold']])
+
+        # plot the heatmap
+        newexp.plot(cmap=cmap, norm=None, barx_fields=['expid'], barx_label=False, bary_fields=['group'], bary_label=True, clim=[-0.1, 6.9], **kwargs)
+
         return newexp
 
     def show_term_details_diff(self, term, exp, **kwargs):

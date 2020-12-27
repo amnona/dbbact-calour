@@ -1581,18 +1581,24 @@ class DBAccess():
                 if cannotation_id in term_annotations.index:
                     annotation_pos = term_annotations.index.get_loc(cannotation_id)
                     if term_annotations['annotation_type'][cannotation_id] == 'common':
-                        score = 4
+                        # score = 4
+                        score = 1
                     elif term_annotations['annotation_type'][cannotation_id] == 'dominant':
-                        score = 8
+                        # score = 8
+                        score = 2
                     elif term_annotations['annotation_type'][cannotation_id] == 'diffexp':
                         if term_annotations['detail_type'][cannotation_id] == 'all':
-                            score = 5
+                            # score = 5
+                            score = 3
                         elif term_annotations['detail_type'][cannotation_id] == 'low':
-                            score = 2
+                            # score = 2
+                            score = 4
                         elif term_annotations['detail_type'][cannotation_id] == 'high':
-                            score = 16
+                            # score = 16
+                            score = 5
                     else:
-                        score = 32
+                        # score = 32
+                        score = 6
                     term_mat[idx, annotation_pos] = score
         term_annotations.index = term_annotations.index.map(str)
         return term_mat, term_annotations, pd.DataFrame({'sequence': features}, index=features)
