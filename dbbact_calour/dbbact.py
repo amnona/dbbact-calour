@@ -708,7 +708,7 @@ class DBBact(Database):
         # newexp = newexp.cluster_features(1)
         newexp = newexp.cluster_data(axis='s')
         # newexp = newexp.sort_by_metadata(field='expid', axis='s')
-        newexp.plot(cmap='tab20b', norm=None, barx_fields=['expid'], barx_label=False, bary_fields=['group'], bary_label=True, **kwargs)
+        newexp.plot(cmap='tab20b', norm=None, barx_fields=['expid'], barx_label=False, bary_fields=['group'], bary_label=True, clim=[0, 32], **kwargs)
         return newexp
 
     def show_term_details_diff(self, term, exp, **kwargs):

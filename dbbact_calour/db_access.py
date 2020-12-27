@@ -1561,7 +1561,7 @@ class DBAccess():
         pandas dataframe
             one row per feature
         '''
-        term_annotations = pd.DataFrame()
+        term_annotations = pd.DataFrame(columns=['annotation', 'annotationid', 'expid', 'annotation_type', 'detail_type'])
         for cannotation in annotations.values():
             details = cannotation['details']
             for cdetail in details:
