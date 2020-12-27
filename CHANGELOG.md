@@ -1,3 +1,13 @@
+## v1.4.0 (2020-12-27)
+
+### Feat
+
+- update term heatmap colormap
+
+### Fix
+
+- update term heatmap to show by default the annotation
+
 ## v1.3.0 (2020-12-27)
 
 ### Feat

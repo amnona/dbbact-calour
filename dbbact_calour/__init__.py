@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from logging import getLogger, NOTSET, basicConfig
 
 __credits__ = "https://github.com/amnona/dbbact-calour/graphs/contributors"
-__version__ = '1.3.0'
+__version__ = '1.4.0'
 
 from .dbbact import DBBact
 
