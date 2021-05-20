@@ -31,6 +31,7 @@ Functions
    DBBact.draw_wordcloud
    DBBact.get_enrichment_score
    DBBact.show_enrichment_qt5
+   DBBact.background_enrich
 '''
 
 from collections import defaultdict
@@ -93,18 +94,9 @@ class DBBact(Database):
         Returns
         -------
         version: str
+            The PEP440 semantic version
         '''
         return __version__
-
-    def set_log_level(self, level='WARNING'):
-        '''Set the log level for the dbbact-calour messages
-
-        Parameters
-        ----------
-        level: str or int, optional
-            can be 'DEBUG'/'INFO'/'WARNING'/'ERROR' or int in the range of 0 (full debug) to 50 (only errors)
-        '''
-        logger.setLevel(level)
 
     def get_seq_annotation_strings(self, *kargs, **kwargs):
         '''Get a list of strings describing the sequence annotations, and the annotations details
@@ -489,7 +481,7 @@ class DBBact(Database):
         from . import dbannotation
         dbannotation.update_annotation_gui(self.db, annotation, exp)
 
-    def enrichment(self, exp, features, max_id=None, **kwargs):
+    def enrichment(self, exp, features, bg_features=None, max_id=None, **kwargs):
         '''Get the list of enriched terms in features compared to all other features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -501,6 +493,9 @@ class DBBact(Database):
             NOTE: exp must contain the
         features : list of str
             The features (from exp) to test for enrichmnt (comapred to the other features in exp)
+        bg_features: list of str or None, optional
+            if not None, compare the second group of features to compare to "features"
+            if None, use all features in exp not found in "features" as bg_features
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
 
@@ -563,7 +558,18 @@ class DBBact(Database):
             features = list(set(features).intersection(exp_features))
             if len(features) == 0:
                 raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
-        bg_features = np.array(list(exp_features.difference(features)))
+
+        if bg_features is None:
+            bg_features = np.array(list(exp_features.difference(features)))
+            if len(bg_features) == 0:
+                raise ValueError('No features experiment remaining after removing the %d features list' % len(features))
+
+        bad_features = set(bg_features).difference(exp_features)
+        if len(bad_features) > 0:
+            logger.warning('Some of the bg_features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            bg_features = list(set(bg_features).intersection(exp_features))
+            if len(bg_features) == 0:
+                raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
 
         # add all annotations to experiment if not already added
         self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
@@ -580,6 +586,61 @@ class DBBact(Database):
 
         res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'], seq_annotations=exp.databases['dbbact']['sequence_annotations'], term_info=exp.databases['dbbact'].get('term_info'), **kwargs)
         return res
+
+    def background_enrich(self, terms, exp, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
+        '''Find dbbact term enrichment comparing experiment sequences (COMMON bacteria) to all sequences in dbbact associated with the terms
+
+        Parameters
+        ----------
+        db: DBAcess
+            the database interface (for accessing dbBact)
+        terms: list of str
+            the terms to get the dbbact sequences for (AND). Retrieves only COMMON annotations
+        exp: calour.AmpliconExperiment
+            COMMON sequences (prev>0.5) are compared to the dbbact background sequences
+        ignore_exp: None or bool or list of int, optional
+            int: dbBact Experiment IDs to ignore when fetching sequences associated with the terms
+            True: ignore annotations from the current experiment
+            None: do not ignore any annotations
+        min_appearance: int, optional
+            keep only sequences associated with the terms in at least min_appearance annotations
+        include_shared: bool, optional
+            True: keep sequences present in both background and experiment (add them to both groups)
+            False: ignore sequences present in both background and experiment (remove from both groups)
+
+        Returns
+        -------
+        Pandas.DataFrame of enriched terms for common terms in current experiment compared to background dbBact experiments.
+        Positive is higher in dbbact background seqs, negative is higher in the experiment seqs
+        '''
+        logger.info('getting term sequences')
+        anno = self.db._get_common_seqs_for_terms(terms)
+        seqs, seqs_all = self.db._get_sequences(anno, min_appearance=min_appearance)
+        logger.info('preparing data')
+
+        # remove shared bacteria between query and background if include_shared is False
+        # NOT IMPLEMENTED
+        if not include_shared:
+            raise ValueError('not implemented yet')
+            shared_seqs = set(seqs).intersection(set(exp.feature_metadata.index.values))
+            logger.debug('removing %d shared sequences' % len(shared_seqs))
+            seqs = list(set(seqs).difference(shared_seqs))
+            logger.debug('%d bg seqs remaining' % len(seqs))
+            exp = exp.filter_ids(list(shared_seqs), negate=True)
+
+        exp = exp.filter_prevalence(0.5)
+        logger.info('%d COMMON experiment sequences remaining' % len(exp.feature_metadata))
+        features = pd.DataFrame(seqs, columns=['_feature_id'])
+        features = features.set_index('_feature_id', drop=False)
+        samples = exp.sample_metadata.copy()
+        aa = AmpliconExperiment(data=np.ones([len(samples), len(seqs)]), sample_metadata=samples, feature_metadata=features).normalize()
+        bb = exp.join_experiments(aa, field='pita', prefixes=['e1', 'e2'])
+        logger.info('getting annotations for %d sequences' % len(bb.feature_metadata))
+        bb = bb.add_terms_to_features('dbbact')
+        bb.info = exp.info.copy()
+        logger.debug('Calculating diff. abundance')
+        cc = self.enrichment(bb, seqs_all, bg_features=exp.feature_metadata.index.values, ignore_exp=ignore_exp, alpha=alpha)
+        return cc
 
     def enrichmentcount(self, exp, features, **kwargs):
         '''DEPRACATED!!!!!!!
@@ -1546,6 +1607,7 @@ class DBBact(Database):
 
     def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
         '''Draw a word_cloud for a given set of sequences
+        Color of each word is purple if term is in positive context (common/dominant/all/high), orange if in negative context (low). brightness represents the number of experiments the term appears in (ranging white for 1 to dark purple/orange for >= 10 experiments)
 
         Parameters
         ----------
@@ -1788,6 +1850,22 @@ class DBBact(Database):
         '''
         from .enrichment_gui import show_enriched_terms_qt5
         show_enriched_terms_qt5(cdb=self, group1=group1, group2=group2, exp=exp, max_id=max_id, group1_name=group1_name, group2_name=group2_name, **kwargs)
+
+    def set_log_level(self, level):
+        '''Set the debug level for dbbact-calour logger
+
+        You can see the logging levels at:
+        https://docs.python.org/3.5/library/logging.html#levels
+
+        Parameters
+        ----------
+        level : int or str
+            10 for debug, 20 for info, 30 for warn, etc.
+            It is passing to :func:`logging.Logger.setLevel`
+
+        '''
+        clog = getLogger('dbbact_calour')
+        clog.setLevel(level)
 
 
 def _get_color(word, font_size, position, orientation, font_path, random_state, fscore, recall, precision, term_count):

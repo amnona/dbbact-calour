@@ -1,3 +1,9 @@
+## v1.5.0 (2021-05-20)
+
+### Feat
+
+- add background enrichment support
+
 ## v1.4.0 (2020-12-27)
 
 ### Feat

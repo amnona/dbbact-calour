@@ -18,9 +18,8 @@ Functions
 
 import requests
 from collections import defaultdict
-from logging import getLogger, NOTSET, basicConfig
-from logging.config import fileConfig
-from pkg_resources import resource_filename, parse_version
+from logging import getLogger
+from pkg_resources import parse_version
 
 import numpy as np
 import pandas as pd
@@ -31,23 +30,6 @@ from .term_pairs import get_enrichment_score
 from . import __version__
 
 logger = getLogger(__name__)
-
-try:
-    # get the logger config file location
-    log = resource_filename(__name__, 'log.cfg')
-
-    # set the logger output according to log.cfg
-    # setting False allows other logger to print log.
-    fileConfig(log, disable_existing_loggers=False)
-
-    # set the log level to same value as calour log level
-    clog = getLogger('calour')
-    calour_log_level = clog.getEffectiveLevel()
-    if calour_log_level != NOTSET:
-        logger.setLevel(calour_log_level)
-except:
-    print('FAILED loading logging config file %s' % log)
-    basicConfig(format='%(levelname)s:%(message)s')
 
 
 class DBAccess():
@@ -150,7 +132,7 @@ class DBAccess():
             res = requests.get(self.dburl + '/' + api, params=rdata)
 
         if res.status_code != 200:
-            logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
+            logger.warn('REST error %s encountered when accessing dbBact %s' % (res.reason, api))
         return res
 
     def get_primers(self):
@@ -385,6 +367,72 @@ class DBAccess():
         shortdesc.extend(annotation_sort_list)
 
         return shortdesc
+
+    def _get_common_seqs_for_terms(self, terms):
+        '''Get a list of annotation ids for all annotations of type 'common' that contain all the terms in terms
+        Used in background enrichment analysis
+
+        Parameters
+        ----------
+        terms: list of str
+            the dbBact terms to search for (returned annotations must contain all the terms)
+
+        Returns
+        -------
+        ids: list of int
+            the annotation ids for all the annotations of type common that contain all the terms
+        '''
+        num_res = 0
+        ids = set()
+        for cterm in terms:
+            print(cterm)
+            res = self._get('ontology/get_annotations', rdata={'term': cterm}, param_json=False)
+            # res=requests.get(server+'/ontology/get_annotations',params={'term':cterm})
+            anno = res.json()['annotations']
+            cids = [canno['id'] for canno in anno if canno['annotationtype'] == 'common']
+            logger.debug('Found %d common annotations for term: %s' % (len(cids), cterm))
+            if num_res == 0:
+                ids.update(cids)
+            else:
+                ids = ids.intersection(set(cids))
+            num_res += 1
+        logger.debug('found %d common annotations total for all %d terms' % (len(ids), len(terms)))
+        return ids
+
+    def _get_sequences(self, annotation_ids, min_appearance=2):
+        '''Get all sequences appearing in at least min_appearance of the annotation ids
+
+        Parameters
+        ----------
+        db: DBAcess
+            the dbaccess class to interface with dbBact
+        anootation_ids: list of int
+            the annotation ids to query
+        min_appearance: int, optional
+            the minimal number of annotations the sequence appears in, in order to include the sequence in the output
+
+        Returns
+        -------
+        seqs: list of str
+            the sequences appearing in the annotations
+        seq_list: list of str
+            same as seqs, but each sequence appears X times, where X is the number of annotations it appears in
+        '''
+        seqs_ids = defaultdict(int)
+        seqs_list = []
+        for cid in annotation_ids:
+            res = self.get_annotation_sequences(cid)
+            for cseq in res:
+                seqs_ids[cseq] += 1
+        # keep only sequences appearing in enough annotations
+        ok_seqs = [ck for ck, cv in seqs_ids.items() if cv >= min_appearance]
+        res = self.get_seq_id_info(ok_seqs)
+        seqs = [x.upper() for x in res]
+        # create the inflated list of sequences (each sequence appears according to the number of annotations it is found in)
+        for idx, x in enumerate(res):
+            seqs_list.extend([x.upper()] * seqs_ids[ok_seqs[idx]])
+        logger.debug('found %d sequences associated with annotations' % len(seqs))
+        return seqs, seqs_list
 
     def _get_exp_annotations(self, annotations):
         '''
@@ -1083,6 +1131,57 @@ class DBAccess():
             feature_annotations[cseq] = newdesc
         return feature_annotations
 
+    def _filter_enriched_exps(self, orig_term_list, term_info, g1featurelist, g2featurelist, seq_annotations, all_annotations, ignore_exp, min_appearances, num_results_needed):
+        '''get the terms enriched in enough experiments, at most getting num_results_needed experiments
+
+        Parameters
+        ----------
+        orig_term_list:
+        g1featurelist, g2featurelist:
+            list of the features in the 2 groups
+        seq_annotations:
+        all_annotations:
+        ignore_exp:
+        min_appearances: int
+            the minimal number of experiments the term needs to be enriched in
+        num_results_needed: int
+            the maximal number of enriched terms needed
+
+        Returns
+        -------
+        term_idx: list of int
+            the indices of the enriched experiments
+        num_enriched_exps: list of int
+            the number of enriched experiments for the term
+        num_total_exps:
+            the total number of experiments with the term
+        '''
+        term_idx = []
+        num_enriched_exps = []
+        num_total_exps = []
+        num_found = 0
+
+        for cidx, cterm in enumerate(orig_term_list):
+            enriched_exps, enriched_annotations, total_exp_annotations = self.count_enriched_exps(cterm, g1featurelist, g2featurelist, seq_annotations, all_annotations, ignore_exp=ignore_exp)
+
+            # if this term is enriched in enough experiments (>= min_experiments)
+            if len(enriched_exps) >= min_appearances:
+                num_found += 1
+                term_idx.append(cidx)
+                num_enriched_exps.append(len(enriched_exps))
+                if term_info is not None:
+                    if cterm in term_info:
+                        num_total_exps.append(term_info[cterm]['total_experiments'])
+                    else:
+                        num_total_exps.append(0)
+                else:
+                    num_total_exps.append(-1)
+
+                if num_found >= num_results_needed:
+                    logger.debug('found enough')
+                    break
+        return term_idx, num_enriched_exps, num_total_exps
+
     def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0,
                         fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1,
                         method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
@@ -1148,6 +1247,7 @@ class DBAccess():
         pandas.DataFrame with  info about significantly enriched terms. columns:
             feature : str the feature
             pval : the p-value for the enrichment (float)
+            qval: the FDR corrected qvalue for the enrichment (float)
             odif : the effect size (float)
             observed : the number of observations of this term in group1 (int)
             expected : the expected (based on all features) number of observations of this term in group1 (float)
@@ -1176,6 +1276,7 @@ class DBAccess():
 
         # filter keeping only annotations containing focus_terms (if not None)
         if focus_terms is not None:
+            logger.debug('filtering annotations for %d focus terms.' % len(focus_terms))
             seq_annotations = seq_annotations.copy()
             focus_terms = set(focus_terms)
             ok_annotations = set()
@@ -1186,6 +1287,7 @@ class DBAccess():
                         found_terms.add(cdetail[1])
                 if len(found_terms) == len(focus_terms):
                     ok_annotations[cid] = cannotation
+            logger.debug('Keeping %d annotations out of %d original' % (len(ok_annotations), len(all_annotations)))
             for k, v in seq_annotations.items():
                 nv = [x for x in v if x in ok_annotations]
                 seq_annotations[k] = nv
@@ -1194,17 +1296,20 @@ class DBAccess():
         # dict of {feature:str, list of tuples of (term:str, score:float)}, key is feature, value is list of (term, score)
         if term_type == 'term':
             # score for each term
+            logger.debug('getting "terms" per feature')
             feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'parentterm':
             # score for each term including the parent terms (based on the ontology structure) for each term
             raise ValueError('parentterm not supported yet')
         elif term_type == 'annotation':
             # score for each annotation
+            logger.debug('getting "annotations" per feature')
             feature_terms = self._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
             # each annotation by definition is in one experiment, so no need to warn about single annotation :)
             add_single_exp_warning = False
         elif term_type == 'combined':
             # score is for each term or annotation
+            logger.debug('getting combined "terms" and "annotations" per feature')
             feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
             feature_annotations = self._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
             for cfeature, cvals in feature_annotations.items():
@@ -1216,13 +1321,14 @@ class DBAccess():
         elif term_type == 'sigterm':
             # feature_terms = self._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
             # get an str of each annotationid
+            logger.debug('getting "sigterm" (number of experiment with the term) per feature')
             feature_terms = {}
             for cseq, cannotations in seq_annotations.items():
                 feature_terms[cseq] = [(str(x), 1) for x in cannotations]
             # each annotation by definition is in one experiment
             add_single_exp_warning = False
         else:
-            raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation"')
+            raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation", "sigterm', "combined")
 
         # arrays of terms (rows) x bacteria (cols)
         feature_array, term_list = self._get_term_features(g1_features, feature_terms)
@@ -1246,6 +1352,7 @@ class DBAccess():
                 remove_set.add('-' + cterm)
         remove_pos = [pos for pos, term in enumerate(term_list) if term in remove_set]
         num_removed = len(remove_set)
+        logger.debug('removing %d terms present in  <%d experiments' % (num_removed, min_exps))
         term_list = [x for x in term_list if x not in remove_set]
         all_feature_array = np.delete(all_feature_array, remove_pos, axis=0)
 
@@ -1265,11 +1372,12 @@ class DBAccess():
                     ccterm = '%s *' % (ccterm)
             new_term_list.append(ccterm)
         term_list = new_term_list
-        logger.debug('removed %d terms' % num_removed)
 
         # set up the labels for the dsFDR test. 1s for features in the first group, 0 for the second
         labels = np.zeros(all_feature_array.shape[1])
         labels[:feature_array.shape[1]] = 1
+
+        logger.debug('got %d labels=0, %d labels=1' % (np.sum(labels == 0), np.sum(labels == 1)))
 
         # find which terms are significantly enriched in either of the two feature groups
         if method == 'card_mean':
@@ -1291,7 +1399,7 @@ class DBAccess():
             logger.debug('card mean transfrom_type=%s' % transform_type)
             keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
         else:
-            logger.debug('other test method=%s transform_type=%s' % (method, transform_type))
+            logger.debug('enrichment test method=%s transform_type=%s' % (method, transform_type))
             keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
 
         # keep only terms passing the FDR corrected significance threshold alpha (by using the keep field from dsFDR)
@@ -1305,6 +1413,7 @@ class DBAccess():
         odif = odif[keep]
         pvals = pvals[keep]
         qvals = qvals[keep]
+        logger.debug('keeping %d significant terms' % len(pvals))
 
         # if sigterm, convert enriched annotations to the terms in them and count over terms
         if term_type == 'sigterm':
@@ -1344,68 +1453,42 @@ class DBAccess():
         num_enriched_exps = np.zeros(len(term_list)) - 1
         num_total_exps = np.zeros(len(term_list)) - 1
         if min_appearances > 0:
+            logger.debug('Getting per-experiment enrichment for min_appearances %d' % min_appearances)
+
             keep_min_exps = []
             g1featurelist = list(g1_features)
             g2featurelist = list(g2_features)
             num_enriched_exps = []
             num_total_exps = []
+            # if num_results_needed == 0 then we want to scan all terms and not stop before
             if num_results_needed == 0:
                 num_results_needed = len(orig_term_list)
 
-            num_found = 0
+            # find the negative terms
+            npos = np.where(odif < 0)[0]
+            ctermlist = orig_term_list[npos]
+            term_idx, num_enriched_exps, num_total_exps = self._filter_enriched_exps(ctermlist, term_info, g1featurelist, g2featurelist, seq_annotations, all_annotations, ignore_exp, min_appearances, num_results_needed)
+            logger.info('found %d negative' % len(term_idx))
+            keep_min_exps = npos[term_idx]
 
-            # we need to iterate from both sides since we want num_results_needed  largest pos and neg effect sizes
-            pos = np.where(odif > 0)
-            if len(pos) > 0:
-                first_pos = np.min(pos)
-            else:
-                first_pos = len(orig_term_list)
-            cidx = 0
-            done = False
-            while not done:
-                cterm = orig_term_list[cidx]
-                enriched_exps, enriched_annotations, total_exp_annotations = self.count_enriched_exps(cterm, g1featurelist, g2featurelist, seq_annotations, all_annotations, ignore_exp=ignore_exp)
-                if len(enriched_exps) >= min_appearances:
-                    num_enriched_exps.append(len(enriched_exps))
-                    if term_info is not None:
-                        if cterm in term_info:
-                            num_total_exps.append(term_info[cterm]['total_experiments'])
-                        else:
-                            num_total_exps.append(0)
-                    else:
-                        num_total_exps.append(-1)
-                    # num_total_exps.append(len(total_exp_annotations))
-                    keep_min_exps.append(cidx)
-                    num_found += 1
-                    if num_found >= num_results_needed:
-                        if cidx < first_pos:
-                            logger.info('found enough negative')
-                            cidx = len(orig_term_list) - 1
-                            num_found = 0
-                            if cidx > len(orig_term_list):
-                                done = True
-                            continue
-                        else:
-                            logger.info('found enough negative')
-                            done = True
-                            continue
-                if odif[cidx] < 0:
-                    cidx = cidx + 1
-                    if cidx > len(orig_term_list):
-                        logger.info("didn't find enough negative terms but no more available")
-                        break
-                else:
-                    cidx = cidx - 1
-                    if cidx < first_pos:
-                        logger.info("didn't find enough positive terms but no more available")
-                        break
+            # find the positive terms.
+            npos = np.where(odif > 0)[0]
+            # reverse it since biggest effect size is at the end
+            npos = npos[::-1]
+            ctermlist = orig_term_list[npos]
+            term_idx, cnum_enriched_exps, cnum_total_exps = self._filter_enriched_exps(ctermlist, term_info, g1featurelist, g2featurelist, seq_annotations, all_annotations, ignore_exp, min_appearances, num_results_needed)
+            logger.info('found %d positive' % len(term_idx))
+            keep_min_exps = np.concatenate((keep_min_exps, npos[term_idx]))
+            num_total_exps = np.concatenate((num_total_exps, cnum_total_exps))
+            num_enriched_exps = np.concatenate((num_enriched_exps, cnum_enriched_exps))
 
+            # keep only the terms that are enriched in at least min_appearances experiments
             term_list = term_list[keep_min_exps]
             orig_term_list = orig_term_list[keep_min_exps]
             odif = odif[keep_min_exps]
             pvals = pvals[keep_min_exps]
             all_feature_array = all_feature_array[:, keep_min_exps]
-            # and resorst since we go from edges to middle
+            # and re-sorst since we went from edges to middle
             si = np.argsort(odif)
             term_list = term_list[si]
             orig_term_list = orig_term_list[si]
@@ -1427,6 +1510,7 @@ class DBAccess():
 
         # create dataframe for resulting terms.
         res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
+        # res = pd.DataFrame({'term': term_list, 'odif': odif, 'pvals': pvals, 'qvals': qvals, 'num_enriched_exps': num_enriched_exps, 'num_total_exps': num_total_exps}, index=term_list)
         features = list(g1_features)
         features.extend(g2_features)
         features = pd.DataFrame({'sequence': features, 'group': labels}, index=features)

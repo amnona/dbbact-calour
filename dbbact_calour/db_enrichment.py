@@ -46,7 +46,7 @@ def _get_sequences(db, annotation_ids, min_appearance=2):
     return seqs, seqs_list
 
 
-def bg_db_enrich2(db, terms, exp, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
+def _background_enrich(db, terms, exp, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
     '''Find dbbact term enrichment comparing experiment sequences (COMMON bacteria) to all sequences in dbbact associated with the terms
 
     Parameters

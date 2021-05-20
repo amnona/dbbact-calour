@@ -3,9 +3,9 @@ from logging.config import fileConfig
 from logging import getLogger, NOTSET, basicConfig
 
 __credits__ = "https://github.com/amnona/dbbact-calour/graphs/contributors"
-__version__ = '1.4.0'
+__version__ = '1.5.0'
 
-from .dbbact import DBBact
+# from .dbbact import DBBact
 
 # load the logger config
 try:
@@ -19,6 +19,7 @@ except:
 	print('failed to load logging config file')
 	basicConfig(format='%(levelname)s:%(message)s')
 
+print('creating logger')
 logger = getLogger(__package__)
 # set the log level to the same as calour module if present
 try:
