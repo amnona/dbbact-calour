@@ -1,3 +1,9 @@
+## v1.5.1 (2021-05-20)
+
+### Fix
+
+- remove old code for background enrichment
+
 ## v1.5.0 (2021-05-20)
 
 ### Feat
