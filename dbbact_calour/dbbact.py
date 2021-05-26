@@ -612,6 +612,24 @@ class DBBact(Database):
         -------
         Pandas.DataFrame of enriched terms for common terms in current experiment compared to background dbBact experiments.
         Positive is higher in dbbact background seqs, negative is higher in the experiment seqs
+            feature : str the feature
+            pval : the p-value for the enrichment (float)
+            odif : the effect size (float)
+            observed : the number of observations of this term in group1 (int)
+            expected : the expected (based on all features) number of observations of this term in group1 (float)
+            frac_group1 : fraction of total terms in group 1 which are the specific term (float)
+            frac_group2 : fraction of total terms in group 2 which are the specific term (float)
+            num_group1 : number of total terms in group 1 which are the specific term (float)
+            num_group2 : number of total terms in group 2 which are the specific term (float)
+            num_enriched_exps: number of experiments where the term is significantly enriched
+            num_enriched_annotations: number of annotations where the term is significantly enriched
+            num_total_exps: number of experiments with this annotation in the term annotations list
+            description : the term (str)
+        numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
+            for term in feature
+        pandas.DataFrame with info about the features used. columns:
+            group: int the group (1/2) to which the feature belongs
+            sequence: str
         '''
         logger.info('getting term sequences')
         anno = self.db._get_common_seqs_for_terms(terms)
@@ -637,8 +655,9 @@ class DBBact(Database):
         bb = exp.join_experiments(aa, field='pita', prefixes=['e1', 'e2'])
         logger.info('getting annotations for %d sequences' % len(bb.feature_metadata))
         bb = bb.add_terms_to_features('dbbact')
+        logger.info('copying exp info')
         bb.info = exp.info.copy()
-        logger.debug('Calculating diff. abundance')
+        logger.info('Calculating diff. abundance')
         cc = self.enrichment(bb, seqs_all, bg_features=exp.feature_metadata.index.values, ignore_exp=ignore_exp, alpha=alpha)
         return cc
 
@@ -1107,9 +1126,11 @@ class DBBact(Database):
         vvals['011'] = og2
         vvals['111'] = oga
 
+        max_used = None
         if max_size is not None:
             if vvals['001'] > max_size:
-                print('WARNING: clipped term circle size to %d. Real size (number of term seqs not overlapping) should be: %d' % (max_size, len(termids) - og1 - og2))
+                max_used = vvals['001']
+                logger.warn('Clipped term circle size to %d. Real size (number of term seqs not overlapping) should be: %d' % (max_size, len(termids) - og1 - og2))
                 vvals['001'] = max_size
 
         # for k, v in vvals.items():
@@ -1119,7 +1140,14 @@ class DBBact(Database):
         f = plt.figure()
         termstr = '+'.join(terms)
         # venn3([gg1, gg2, anno_group], set_labels=(group1_name, group2_name, 'annotation'), set_colors=['mediumblue', 'r', 'g'])
-        venn3(vvals, set_labels=(group1_name, group2_name, termstr), set_colors=set_colors)
+        vd = venn3(vvals, set_labels=(group1_name, group2_name, termstr), set_colors=set_colors)
+
+        # now update the dbbact sequences number of sequences if max_size was used
+        if max_used is not None:
+            dbtext = vd.get_label_by_id('001')
+            logger.debug('Updating dbbact seqs circle text from %d to %d' % (max_used, max_size))
+            dbtext.set_text(str(max_used))
+
         plt.title('term overlaps for %s' % termstr)
         return f
 
@@ -1578,7 +1606,6 @@ class DBBact(Database):
                 if len(found_terms) == len(focus_terms):
                     ok_annotations[cid] = cannotation
             logger.info('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
-            print('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
             for k, v in sequence_annotations.items():
                 nv = [x for x in v if x in ok_annotations]
                 sequence_annotations[k] = nv

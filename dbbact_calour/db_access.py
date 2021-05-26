@@ -385,7 +385,7 @@ class DBAccess():
         num_res = 0
         ids = set()
         for cterm in terms:
-            print(cterm)
+            logger.debug('getting annotations for term: %s' % cterm)
             res = self._get('ontology/get_annotations', rdata={'term': cterm}, param_json=False)
             # res=requests.get(server+'/ontology/get_annotations',params={'term':cterm})
             anno = res.json()['annotations']
