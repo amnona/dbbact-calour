@@ -1712,16 +1712,16 @@ class DBAccess():
             for cannotation in annotations:
                 for cdetail in cannotation['details']:
                     terms_to_check.add(cdetail[1])
-        print('need to check %d details' % len(terms_to_check))
+        logger.debug('need to check %d details' % len(terms_to_check))
         term_dist = {}
         for cterm in terms_to_check:
-            print(cterm)
+            logger.debug(cterm)
             try:
                 cterm_f = self.get_db_term_features(cterm)
                 common = len(set(term_features.keys()).intersection(set(cterm_f.keys())))
                 cscore = common / (len(term_features) + len(cterm_f))
                 term_dist[cterm] = cscore
-                print('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
+                logger.debug('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
             except:
                 logger.warn('failed for term %s' % cterm)
         return term_dist
@@ -1926,7 +1926,7 @@ class DBAccess():
         term2_f = term_features[term2]
         common = len(set(term1_f.keys()).intersection(set(term2_f.keys())))
         cscore = common / (len(term1_f) + len(term2_f))
-        print('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
+        logger.debug('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
 
     def count_enriched_exps(self, term, g1features, g2features, seq_annotations, annotations, ignore_exp=None, **kwargs):
         '''Get experiments with enriched term annotations for a given term.
