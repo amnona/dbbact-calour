@@ -1,3 +1,9 @@
+## v1.6.0 (2021-05-26)
+
+### Feat
+
+- update label in venn diagram to show corrent number if clipped at max_size
+
 ## v1.5.1 (2021-05-20)
 
 ### Fix
