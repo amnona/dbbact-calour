@@ -1338,12 +1338,6 @@ class DBAccess():
         # and the array of terms (rows) x all bacteria (in both groups) (cols)
         all_feature_array = np.hstack([feature_array, bg_array])
 
-        import hashlib
-        # print(hashlib.sha256(keep.to_csv().encode()).hexdigest())
-        print(hashlib.sha256(feature_array).hexdigest())
-        print(hashlib.sha256(bg_array).hexdigest())
-        print(hashlib.sha256(all_feature_array).hexdigest())
-
         # remove terms present in a small number of experiments (<min_exps)
         # get the number of experiments for each term
         term_exps = defaultdict(set)
