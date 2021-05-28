@@ -1,4 +1,8 @@
-## Unreleased
+## v1.7.0 (2021-05-28)
+
+### Feat
+
+- Fix enrichment so replicates results across runs with same random_seed
 
 ### Fix
 
