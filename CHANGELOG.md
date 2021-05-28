@@ -1,3 +1,9 @@
+## Unreleased
+
+### Fix
+
+- change print to logger.debug
+
 ## v1.6.0 (2021-05-26)
 
 ### Feat

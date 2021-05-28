@@ -1270,8 +1270,9 @@ class DBAccess():
             np.random.seed(random_seed)
 
         # prepare arrays of the 2 features and the combined features
-        g1_features = np.array(list(g1_features))
-        g2_features = np.array(list(g2_features))
+        # we sort the features to ensure replicability
+        g1_features = np.array(sorted(list(g1_features)))
+        g2_features = np.array(sorted(list(g2_features)))
         exp_features = np.hstack([g1_features, g2_features])
 
         # filter keeping only annotations containing focus_terms (if not None)
@@ -1337,6 +1338,12 @@ class DBAccess():
         # and the array of terms (rows) x all bacteria (in both groups) (cols)
         all_feature_array = np.hstack([feature_array, bg_array])
 
+        import hashlib
+        # print(hashlib.sha256(keep.to_csv().encode()).hexdigest())
+        print(hashlib.sha256(feature_array).hexdigest())
+        print(hashlib.sha256(bg_array).hexdigest())
+        print(hashlib.sha256(all_feature_array).hexdigest())
+
         # remove terms present in a small number of experiments (<min_exps)
         # get the number of experiments for each term
         term_exps = defaultdict(set)
@@ -1397,10 +1404,10 @@ class DBAccess():
 
             # get the significantly enriched terms using the total annotations normalizing function
             logger.debug('card mean transfrom_type=%s' % transform_type)
-            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method, random_seed=random_seed)
         else:
             logger.debug('enrichment test method=%s transform_type=%s' % (method, transform_type))
-            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method, random_seed=random_seed)
 
         # keep only terms passing the FDR corrected significance threshold alpha (by using the keep field from dsFDR)
         keep = np.where(keep)[0]
@@ -1598,7 +1605,7 @@ class DBAccess():
         # get all terms. store the index position for each term
         terms = {}
         cpos = 0
-        for cfeature, ctermlist in feature_terms.items():
+        for cfeature, ctermlist in sorted(feature_terms.items()):
             for cterm, ccount in ctermlist:
                 if cterm not in terms:
                     terms[cterm] = cpos
