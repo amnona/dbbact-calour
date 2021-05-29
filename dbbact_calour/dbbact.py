@@ -222,7 +222,7 @@ class DBBact(Database):
         exp.databases['dbbact']['annotations'] = annotations
         exp.databases['dbbact']['term_info'] = term_info
         exp.databases['dbbact']['taxonomy'] = taxonomy
-        logger.info('Added annotation data to experiment. Total %d annotations, %d terms' % (len(annotations), len(sequence_terms)))
+        logger.info('Added annotation data to experiment. Total %d annotations, %d ASVs' % (len(annotations), len(sequence_terms)))
         return ''
 
     def add_annotation(self, features, exp):
@@ -1490,7 +1490,7 @@ class DBBact(Database):
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
         return newexp
 
-    def rank_enrichment(self, exp, field, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', method='spearman', alpha=0.1, use_term_pairs=False, max_id=None):
+    def rank_enrichment(self, exp, field, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', method='spearman', alpha=0.1, use_term_pairs=False, max_id=None, random_seed=None):
         '''Get the list of terms significanly correlated/anti-correlated with the values in field for all bacteria.
 
         Identify terms correlated with the values by calculating for each term the term score for each feature, and correlating this score/feature vector with the values vector
@@ -1542,7 +1542,7 @@ class DBBact(Database):
         '''
         newexp = self.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, min_appearances=min_appearances, score_method=score_method, use_term_pairs=use_term_pairs, max_id=max_id, axis='f')
         # get the correlated terms for the value supplied
-        dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method)
+        dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method, random_seed=random_seed)
         return dd
 
     def get_wordcloud_stats(self, exp=None, features=None, ignore_exp=None, freq_weighted=False, focus_terms=None, threshold=None, max_id=None):
