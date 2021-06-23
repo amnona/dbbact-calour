@@ -1114,7 +1114,7 @@ class DBAccess():
 
         Returns
         -------
-        dict of {sequence(str): list of annotation details(str)}
+        dict of {sequence(str): list of tuples of (annotation details(str), annotation score(int)=1)}
             the annotations descriptions (text) associated with this sequence
         '''
         feature_annotations = {}
@@ -1127,6 +1127,7 @@ class DBAccess():
                     if all_annotations[cannotation]['expid'] in ignore_exp:
                         continue
                 cdesc = self.get_annotation_string(all_annotations[cannotation])
+                cdesc += ' [%s]' % all_annotations[cannotation]['annotationid']
                 newdesc.append((cdesc, 1))
             feature_annotations[cseq] = newdesc
         return feature_annotations
@@ -1258,7 +1259,8 @@ class DBAccess():
             num_enriched_exps: number of experiments where the term is significantly enriched
             num_enriched_annotations: number of annotations where the term is significantly enriched
             num_total_exps: number of experiments with this annotation in the term annotations list
-            description : the term (str)
+            description : the term or annotation (str)
+            annotationid: the id of the enriched annotation (if using term_type='annotation' or) (int)
         numpy.Array where rows are features (ordered like the dataframe), columns are terms and value is score
             for term in feature
         pandas.DataFrame with info about the features used. columns:
