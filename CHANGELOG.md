@@ -1,3 +1,14 @@
+## v1.8.0 (2021-06-23)
+
+### Feat
+
+- Add annotationid to annotation enrichemnt analysis
+
+### Fix
+
+- fix load message for adding dbbact terms
+- remove debug prints
+
 ## v1.7.0 (2021-05-28)
 
 ### Feat
