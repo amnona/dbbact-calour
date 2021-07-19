@@ -479,7 +479,7 @@ class DBBact(Database):
             empty if ok, otherwise the error encountered
         '''
         from . import dbannotation
-        dbannotation.update_annotation_gui(self.db, annotation, exp)
+        dbannotation.update_annotation_gui(self, annotation, exp)
 
     def enrichment(self, exp, features, bg_features=None, max_id=None, **kwargs):
         '''Get the list of enriched terms in features compared to all other features in exp.

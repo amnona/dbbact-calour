@@ -190,6 +190,35 @@ class DBAccess():
         logger.debug('Found %d annotations for sequence %s' % (len(annotations), sequence))
         return annotations, term_info, taxonomy
 
+    def get_annotation(self, annotation_id):
+        '''Get the annotation for a given annotation id
+
+        Parameters
+        ----------
+        annotation_id: int
+            the dbBact annotation id
+
+        Returns
+        -------
+        error: str
+            the error encountered or '' if ok
+        annotation : dict
+            the annotation
+            See dbBact sequences/get_annotation REST API documentation
+        '''
+        rdata = {}
+        rdata['annotationid'] = annotation_id
+        res = self._get('annotations/get_annotation', rdata)
+        if res.status_code != 200:
+            msg = 'error getting annotation for annotation_id %d' % annotation_id
+            logger.warn(msg)
+            return msg, {}
+        res = res.json()
+        annotation = res
+
+        logger.debug('Got annotation for annotationid %d' % annotation_id)
+        return '', annotation
+
     def get_annotation_string(self, cann):
         '''Get nice string summaries of annotation
 
@@ -794,7 +823,7 @@ class DBAccess():
     def add_annotations(self, expid, sequences, annotationtype, annotations, submittername='NA',
                         description='', method='na', primerid='V4', agenttype='Calour', private='n'):
         """
-        Add a new manual curation to the database
+        Add a new annotation to dbBact
 
         Paramerers
         ----------
