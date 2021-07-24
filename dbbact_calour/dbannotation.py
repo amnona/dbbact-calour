@@ -54,7 +54,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
 
     Parameters
     ----------
-    db : dbbact.DBBact
+    dbclass : dbbact.DBBact
         the dbBact database to interact with
     seqs : list of sequences ('ACGT')
         the sequences to add to the database
@@ -113,13 +113,20 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
         for citem in qtlistiteritems(ui.blistall):
             cdat = qtlistgetdata(citem)
             cval = cdat['value']
+            cterm_id = cdat['term_id']
             ctype = cdat['type']
             # convert synonyms to original ontology terms
             if cval in DBAnnotateSave._ontology_from_id:
                 cval = DBAnnotateSave._ontology_from_id[cval]
             else:
                 logger.debug("item %s not found in ontologyfromid" % cval)
-            annotations.append((ctype, cval))
+
+            # if the user selected a specific term_id, use it
+            if cterm_id != '':
+                annotations.append((ctype, cterm_id))
+            # otherwise, use just the term description
+            else:
+                annotations.append((ctype, cval))
         # get annotation type
         if ui.bdiffpres.isChecked():
             annotation_type = 'DIFFEXP'
@@ -143,28 +150,31 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
             return msg
 
         logger.debug('Adding annotation to studyid %s' % cdata)
-        err, res = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
+        err, annotation_id = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
         if err:
             msg = 'Annotation not added. error: %s' % err
             logger.warn(msg)
             QtWidgets.QMessageBox.warning(None, 'Annotation not added', msg)
             return msg
-        logger.debug('New annotation added. AnnotationId=%d' % res)
-
-        # store the history
-        global history
-        history[exp.info['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        logger.debug('New annotation added. AnnotationId=%d' % annotation_id)
+        err, annotation_res = dbclass.db.get_annotation(annotation_id)
+        if err == '':
+            # store the history of the annotation for the next annotation of the same experiment (so description, details etc. will auto fill)
+            global history
+            history[exp.info['data_md5']] = annotation_res
+        else:
+            logger.warn('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotation_id)
         return ''
     return 'Add annotation cancelled'
 
 
-def update_annotation_gui(db, annotation, exp):
+def update_annotation_gui(dbclass, annotation, exp):
     '''Update an existing annotation
 
     Parameters
     ----------
-    db: DBAccess
-        the interface to dbbact
+    db: dbbact.DBBact
+        the interface to dbbact (for storing autocomplete)
     annotation: dict
         the annotation to update (dict including the key "annotationid")
     exp: Calour.Experiment
@@ -173,12 +183,12 @@ def update_annotation_gui(db, annotation, exp):
     app, app_created = init_qt5()
 
     # test if we have user/password set-up
-    test_user_password(db)
+    test_user_password(dbclass.db)
 
     annotationid = annotation['annotationid']
     primerid = annotation.get('primerid')
 
-    ui = DBAnnotateSave([], exp, prefill_annotation=annotation, dbclass=db)
+    ui = DBAnnotateSave([], exp, prefill_annotation=annotation, dbclass=dbclass)
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
         primerid = ui.primerid
@@ -221,16 +231,20 @@ def update_annotation_gui(db, annotation, exp):
             logger.warn(msg)
             return msg
         logger.debug('Updating annotations for annotationid %d' % annotationid)
-        res = db.send_update_annotation(annotationid=annotationid, annotationtype=annotation_type, annotations=annotations, description=description, method=method)
+        res = dbclass.db.send_update_annotation(annotationid=annotationid, annotationtype=annotation_type, annotations=annotations, description=description, method=method)
         if res is None:
             msg = 'Annotation not updated.'
             logger.warn(msg)
             return msg
         logger.debug('Annotation updated.')
 
-        # store the history
-        global history
-        history[exp.info['data_md5']] = {'details': annotations, 'description': description, 'method': method, 'annotation_type': annotation_type, 'primerid': primerid}
+        err, annotation_res = dbclass.db.get_annotation(annotationid)
+        if err == '':
+            # store the history of the annotation for the next annotation of the same experiment (so description, details etc. will auto fill)
+            global history
+            history[exp.info['data_md5']] = annotation_res
+        else:
+            logger.warn('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotationid)
         return ''
     return 'Update annotation cancelled'
 
@@ -576,6 +590,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
     def _load_ontologies(self, dbclass=None):
         '''Load the ontology term files from the local computer (for autocomplete).
+        Also check dbbact server if new ontology terms have been added and update the local files
 
         The data is stored locally in DBAnnotateSave._ontology_dict and DBAnnotateSave._ontology_from_id
 
@@ -596,9 +611,15 @@ class DBAnnotateSave(QtWidgets.QDialog):
 
         For example for the term "united states of america" we have in DBAnnotateSave._ontology_dict key "U.S.A. :GAZ(United States of America)" with value GAZ:00002459
         and in DBAnnotateSave._ontology_from_id we have key "GAZ:00002459" with value "United States of America"
+
+        Parameters
+        ----------
+        dbclass: dbbact.DBBact
+            the class where terms are stored, so we can just ask for new dbbact terms
         '''
         _changed = False
 
+        # if ontology files have not been loaded yet, load them
         if len(DBAnnotateSave._ontologies_loaded) == 0:
             _changed = True
             DBAnnotateSave._ontology_from_id = {}
@@ -725,9 +746,13 @@ class DBAnnotateSave(QtWidgets.QDialog):
         if 'details' in annotation:
             for cdat in annotation['details']:
                 if onlyall:
-                    if cdat[0] != 'ALL':
+                    if cdat[0].lower() != 'all':
                         continue
-                self.addtolist(cdat[0], cdat[1])
+                if len(cdat) >= 3:
+                    cterm_id = cdat[2]
+                else:
+                    cterm_id = None
+                self.addtolist(cdat[0], cdat[1], cterm_id)
         if 'description' in annotation:
             self.bdescription.setText(annotation['description'])
         if 'method' in annotation:
@@ -837,7 +862,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         else:
             self.bontoinput.setCompleter(None)
 
-    def addtolist(self, cgroup, conto):
+    def addtolist(self, cgroup, conto, conto_term_id=None):
         """
         add an ontology term to the list
 
@@ -846,33 +871,59 @@ class DBAnnotateSave(QtWidgets.QDialog):
             the group (i.e. 'low/high/all')
         conto : str
             the ontology term to add
+        conto_term_id: str or None, optional
+            the ontologytable term_id for the given ontoloty term (i.e. GAZ:00003).
+            If none, deduce the term_id from the conto string (by taking the last part of the string "XXX (YYY GAZ:0004)"
         """
         if conto == '':
             logger.debug('no string to add to list')
             return
-        logger.debug('addtolist %s %s' % (cgroup, conto))
+        logger.debug('addtolist %s %s (%s)' % (cgroup, conto, conto_term_id))
+
+        # is it a term from an existing ontology?
         if conto in self._ontology_dict:
+            # this is a hack to get the ontology term_id (i.e. "GAZ:00001" from the description string)
+            # we could do it more ordered but will take more memory - so let's hack in the meanwhile
+            if conto_term_id is None:
+                conto_term_id = conto.split('(')[-1].split(' - ')[-1].split(')')[0]
+                if ':' not in conto_term_id:
+                    logger.warn('No ontology term_id in current string %s' % conto)
             conto = self._ontology_from_id[self._ontology_dict[conto]]
         else:
-            logger.debug('Not in ontology!!!')
-            # TODO: add are you sure... not in ontology list....
+            if conto_term_id is None:
+                logger.debug('Term %s not in ontology.' % conto)
+                res = show_and_ask('Term %s does not appear in any ontology.\n'
+                                   'Do you want to add it as a new term to dbBact?' % conto,
+                                   keyval='new_ontology_term', show_cancel=True)
+                if not res:
+                    logger.debug('cancel all term to list')
+                    return
+                conto_term_id = ''
 
-        # if item already in list, don't do anything
+        # TODO: check if there are more than 1 ontology terms with the same description (i.e. 'feces'), let the user select which ones to add
+
+        # check if item already in list
         for citem in qtlistiteritems(self.blistall):
             cdata = qtlistgetdata(citem)
             if cdata['value'] == conto:
-                logger.debug('item already in list')
-                return
+                # if already in list and it is a new term, do nothing
+                if conto_term_id == '':
+                    logger.debug('item already in list')
+                    return
+                # if specific term_id already in the list of term_ids, do nothing
+                if conto_term_id == cdata['term_id']:
+                    logger.debug('term_id %s for term %s already in list' % (conto_term_id, conto))
+                    return
 
         if cgroup.lower() == 'low':
-            ctext = "LOW:%s" % conto
-            qtlistadd(self.blistall, ctext, {'type': 'LOW', 'value': conto}, color='red')
+            ctext = "LOW:%s (%s)" % (conto, conto_term_id)
+            qtlistadd(self.blistall, ctext, {'type': 'LOW', 'value': conto, 'term_id': conto_term_id}, color='red')
         if cgroup.lower() == 'high':
-            ctext = "HIGH:%s" % conto
-            qtlistadd(self.blistall, ctext, {'type': 'HIGH', 'value': conto}, color='blue')
+            ctext = "HIGH:%s (%s)" % (conto, conto_term_id)
+            qtlistadd(self.blistall, ctext, {'type': 'HIGH', 'value': conto, 'term_id': conto_term_id}, color='blue')
         if cgroup.lower() == 'all':
-            ctext = "ALL:%s" % conto
-            qtlistadd(self.blistall, ctext, {'type': 'ALL', 'value': conto}, color='black')
+            ctext = "ALL:%s (%s)" % (conto, conto_term_id)
+            qtlistadd(self.blistall, ctext, {'type': 'ALL', 'value': conto, 'term_id': conto_term_id}, color='black')
 
     def getontogroup(self):
         if self.ball.isChecked():
@@ -1065,7 +1116,24 @@ class UserPasswordDlg(QtWidgets.QDialog):
         self.close()
 
 
-def show_and_ask(msg, keyval):
+def show_and_ask(msg, keyval, show_cancel=False):
+    '''Show the message unless the user has checked the "Don't show this again" box
+
+    Parameters
+    ----------
+    msg: str
+        the message to display
+    keyval: str
+        the config file key to indicate user has asked to not show again the message
+    show_cancel: bool, optional
+        if True, also show a cancel button.
+        If False (default), only have an ok button
+
+    Returns
+    -------
+    bool:
+        True if ok was pressed, False if Cancel was pressed (only if show_cancel is True)
+    '''
     keyval = 'skip_msg_' + keyval
     res = get_config_value(keyval, section='dbbact', fallback='no')
     if res.lower() == 'yes':
@@ -1074,12 +1142,18 @@ def show_and_ask(msg, keyval):
     a.setText(msg)
     a.setWindowTitle('dbBact-Calour')
     a.setIcon(QtWidgets.QMessageBox.Information)
-    a.setStandardButtons(QtWidgets.QMessageBox.Ok)
+    if not show_cancel:
+        a.setStandardButtons(QtWidgets.QMessageBox.Ok)
+    else:
+        a.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
     cb = QtWidgets.QCheckBox(text="Don't show this again")
     a.setCheckBox(cb)
-    a.exec_()
+    res = a.exec_()
     if cb.isChecked():
         set_config_value(keyval, 'yes', section='dbbact')
+    if res == QtWidgets.QMessageBox.Ok:
+        return True
+    return False
 
 
 class SListWindow(QtWidgets.QDialog):

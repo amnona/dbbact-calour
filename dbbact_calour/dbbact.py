@@ -32,6 +32,7 @@ Functions
    DBBact.get_enrichment_score
    DBBact.show_enrichment_qt5
    DBBact.background_enrich
+   DBBact.set_password
 '''
 
 from collections import defaultdict
@@ -47,11 +48,10 @@ import matplotlib as mpl
 from .db_access import DBAccess
 from .term_pairs import get_enrichment_score, get_terms
 from . import __version__
-from calour.util import get_config_value
+from calour.util import _to_list, get_config_value, set_config_value
 from calour.database import Database
 from calour.experiment import Experiment
 from calour.amplicon_experiment import AmpliconExperiment
-from calour.util import _to_list
 
 logger = getLogger(__name__)
 
@@ -97,6 +97,30 @@ class DBBact(Database):
             The PEP440 semantic version
         '''
         return __version__
+
+    def set_password(self, username=None, password=None, reset=False):
+        '''Set the dbBact username and password in the calour.config file dbBact section
+
+        Parameters
+        ----------
+        username: str or None, optional
+            the username used to register to dbBact. None to not change
+        password: str or None, optional
+            the password used to register to dbBact. None to not change
+        reset: bool, optional
+            if True and username and password are None, delete the entries from the config file (so will ask user next time he annotates)
+
+        Returns
+        -------
+        '''
+        if username is not None:
+            logger.info('storing username %s in config file' % username)
+            set_config_value('username', username, section='dbbact')
+        if password is not None:
+            logger.info('storing password in config file')
+            set_config_value('password', password, section='dbbact')
+        if reset and username is None and password is None:
+            raise ValueError('reset not implemented yet')
 
     def get_seq_annotation_strings(self, *kargs, **kwargs):
         '''Get a list of strings describing the sequence annotations, and the annotations details
@@ -222,7 +246,7 @@ class DBBact(Database):
         exp.databases['dbbact']['annotations'] = annotations
         exp.databases['dbbact']['term_info'] = term_info
         exp.databases['dbbact']['taxonomy'] = taxonomy
-        logger.info('Added annotation data to experiment. Total %d annotations, %d terms' % (len(annotations), len(sequence_terms)))
+        logger.info('Added annotation data to experiment. Total %d annotations, %d ASVs' % (len(annotations), len(sequence_terms)))
         return ''
 
     def add_annotation(self, features, exp):
@@ -479,7 +503,7 @@ class DBBact(Database):
             empty if ok, otherwise the error encountered
         '''
         from . import dbannotation
-        dbannotation.update_annotation_gui(self.db, annotation, exp)
+        dbannotation.update_annotation_gui(self, annotation, exp)
 
     def enrichment(self, exp, features, bg_features=None, max_id=None, **kwargs):
         '''Get the list of enriched terms in features compared to all other features in exp.
@@ -1490,7 +1514,7 @@ class DBBact(Database):
         newexp = Experiment(fs_array, sample_metadata=sm, feature_metadata=fm, description='Term scores')
         return newexp
 
-    def rank_enrichment(self, exp, field, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', method='spearman', alpha=0.1, use_term_pairs=False, max_id=None):
+    def rank_enrichment(self, exp, field, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', method='spearman', alpha=0.1, use_term_pairs=False, max_id=None, random_seed=None):
         '''Get the list of terms significanly correlated/anti-correlated with the values in field for all bacteria.
 
         Identify terms correlated with the values by calculating for each term the term score for each feature, and correlating this score/feature vector with the values vector
@@ -1542,7 +1566,7 @@ class DBBact(Database):
         '''
         newexp = self.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, min_appearances=min_appearances, score_method=score_method, use_term_pairs=use_term_pairs, max_id=max_id, axis='f')
         # get the correlated terms for the value supplied
-        dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method)
+        dd = newexp.correlation(field, fdr_method=fdr_method, alpha=alpha, method=method, random_seed=random_seed)
         return dd
 
     def get_wordcloud_stats(self, exp=None, features=None, ignore_exp=None, freq_weighted=False, focus_terms=None, threshold=None, max_id=None):

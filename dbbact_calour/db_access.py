@@ -190,6 +190,35 @@ class DBAccess():
         logger.debug('Found %d annotations for sequence %s' % (len(annotations), sequence))
         return annotations, term_info, taxonomy
 
+    def get_annotation(self, annotation_id):
+        '''Get the annotation for a given annotation id
+
+        Parameters
+        ----------
+        annotation_id: int
+            the dbBact annotation id
+
+        Returns
+        -------
+        error: str
+            the error encountered or '' if ok
+        annotation : dict
+            the annotation
+            See dbBact sequences/get_annotation REST API documentation
+        '''
+        rdata = {}
+        rdata['annotationid'] = annotation_id
+        res = self._get('annotations/get_annotation', rdata)
+        if res.status_code != 200:
+            msg = 'error getting annotation for annotation_id %d' % annotation_id
+            logger.warn(msg)
+            return msg, {}
+        res = res.json()
+        annotation = res
+
+        logger.debug('Got annotation for annotationid %d' % annotation_id)
+        return '', annotation
+
     def get_annotation_string(self, cann):
         '''Get nice string summaries of annotation
 
@@ -794,7 +823,7 @@ class DBAccess():
     def add_annotations(self, expid, sequences, annotationtype, annotations, submittername='NA',
                         description='', method='na', primerid='V4', agenttype='Calour', private='n'):
         """
-        Add a new manual curation to the database
+        Add a new annotation to dbBact
 
         Paramerers
         ----------
@@ -1114,7 +1143,7 @@ class DBAccess():
 
         Returns
         -------
-        dict of {sequence(str): list of annotation details(str)}
+        dict of {sequence(str): list of tuples of (annotation details(str), annotation score(int)=1)}
             the annotations descriptions (text) associated with this sequence
         '''
         feature_annotations = {}
@@ -1127,6 +1156,7 @@ class DBAccess():
                     if all_annotations[cannotation]['expid'] in ignore_exp:
                         continue
                 cdesc = self.get_annotation_string(all_annotations[cannotation])
+                cdesc += ' [%s]' % all_annotations[cannotation]['annotationid']
                 newdesc.append((cdesc, 1))
             feature_annotations[cseq] = newdesc
         return feature_annotations
@@ -1258,7 +1288,8 @@ class DBAccess():
             num_enriched_exps: number of experiments where the term is significantly enriched
             num_enriched_annotations: number of annotations where the term is significantly enriched
             num_total_exps: number of experiments with this annotation in the term annotations list
-            description : the term (str)
+            description : the term or annotation (str)
+            annotationid: the id of the enriched annotation (if using term_type='annotation' or) (int)
         numpy.Array where rows are features (ordered like the dataframe), columns are terms and value is score
             for term in feature
         pandas.DataFrame with info about the features used. columns:
@@ -1270,8 +1301,9 @@ class DBAccess():
             np.random.seed(random_seed)
 
         # prepare arrays of the 2 features and the combined features
-        g1_features = np.array(list(g1_features))
-        g2_features = np.array(list(g2_features))
+        # we sort the features to ensure replicability
+        g1_features = np.array(sorted(list(g1_features)))
+        g2_features = np.array(sorted(list(g2_features)))
         exp_features = np.hstack([g1_features, g2_features])
 
         # filter keeping only annotations containing focus_terms (if not None)
@@ -1397,10 +1429,10 @@ class DBAccess():
 
             # get the significantly enriched terms using the total annotations normalizing function
             logger.debug('card mean transfrom_type=%s' % transform_type)
-            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=_mean_diff_toal_annotations, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method, random_seed=random_seed)
         else:
             logger.debug('enrichment test method=%s transform_type=%s' % (method, transform_type))
-            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method)
+            keep, odif, pvals, qvals = dsfdr(all_feature_array, labels, method=method, transform_type=transform_type, alpha=alpha, numperm=numperm, fdr_method=fdr_method, random_seed=random_seed)
 
         # keep only terms passing the FDR corrected significance threshold alpha (by using the keep field from dsFDR)
         keep = np.where(keep)[0]
@@ -1598,7 +1630,7 @@ class DBAccess():
         # get all terms. store the index position for each term
         terms = {}
         cpos = 0
-        for cfeature, ctermlist in feature_terms.items():
+        for cfeature, ctermlist in sorted(feature_terms.items()):
             for cterm, ccount in ctermlist:
                 if cterm not in terms:
                     terms[cterm] = cpos
@@ -1712,16 +1744,16 @@ class DBAccess():
             for cannotation in annotations:
                 for cdetail in cannotation['details']:
                     terms_to_check.add(cdetail[1])
-        print('need to check %d details' % len(terms_to_check))
+        logger.debug('need to check %d details' % len(terms_to_check))
         term_dist = {}
         for cterm in terms_to_check:
-            print(cterm)
+            logger.debug(cterm)
             try:
                 cterm_f = self.get_db_term_features(cterm)
                 common = len(set(term_features.keys()).intersection(set(cterm_f.keys())))
                 cscore = common / (len(term_features) + len(cterm_f))
                 term_dist[cterm] = cscore
-                print('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
+                logger.debug('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
             except:
                 logger.warn('failed for term %s' % cterm)
         return term_dist
@@ -1926,7 +1958,7 @@ class DBAccess():
         term2_f = term_features[term2]
         common = len(set(term1_f.keys()).intersection(set(term2_f.keys())))
         cscore = common / (len(term1_f) + len(term2_f))
-        print('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
+        logger.debug('term1 features %d, term2 features %d, common %d, score %f' % (len(term1_f), len(term2_f), common, cscore))
 
     def count_enriched_exps(self, term, g1features, g2features, seq_annotations, annotations, ignore_exp=None, **kwargs):
         '''Get experiments with enriched term annotations for a given term.

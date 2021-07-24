@@ -1,3 +1,24 @@
+## v1.8.0 (2021-06-23)
+
+### Feat
+
+- Add annotationid to annotation enrichemnt analysis
+
+### Fix
+
+- fix load message for adding dbbact terms
+- remove debug prints
+
+## v1.7.0 (2021-05-28)
+
+### Feat
+
+- Fix enrichment so replicates results across runs with same random_seed
+
+### Fix
+
+- change print to logger.debug
+
 ## v1.6.0 (2021-05-26)
 
 ### Feat
