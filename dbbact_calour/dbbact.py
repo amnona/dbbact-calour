@@ -32,6 +32,7 @@ Functions
    DBBact.get_enrichment_score
    DBBact.show_enrichment_qt5
    DBBact.background_enrich
+   DBBact.set_password
 '''
 
 from collections import defaultdict
@@ -47,11 +48,10 @@ import matplotlib as mpl
 from .db_access import DBAccess
 from .term_pairs import get_enrichment_score, get_terms
 from . import __version__
-from calour.util import get_config_value
+from calour.util import _to_list, get_config_value, set_config_value
 from calour.database import Database
 from calour.experiment import Experiment
 from calour.amplicon_experiment import AmpliconExperiment
-from calour.util import _to_list
 
 logger = getLogger(__name__)
 
@@ -97,6 +97,30 @@ class DBBact(Database):
             The PEP440 semantic version
         '''
         return __version__
+
+    def set_password(self, username=None, password=None, reset=False):
+        '''Set the dbBact username and password in the calour.config file dbBact section
+
+        Parameters
+        ----------
+        username: str or None, optional
+            the username used to register to dbBact. None to not change
+        password: str or None, optional
+            the password used to register to dbBact. None to not change
+        reset: bool, optional
+            if True and username and password are None, delete the entries from the config file (so will ask user next time he annotates)
+
+        Returns
+        -------
+        '''
+        if username is not None:
+            logger.info('storing username %s in config file' % username)
+            set_config_value('username', username, section='dbbact')
+        if password is not None:
+            logger.info('storing password in config file')
+            set_config_value('password', password, section='dbbact')
+        if reset and username is None and password is None:
+            raise ValueError('reset not implemented yet')
 
     def get_seq_annotation_strings(self, *kargs, **kwargs):
         '''Get a list of strings describing the sequence annotations, and the annotations details
