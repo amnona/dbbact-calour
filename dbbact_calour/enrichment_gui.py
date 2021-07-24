@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import QVBoxLayout, QListWidget, QDialogButtonBox, QHBoxLay
 import numpy as np
 
 from .dbannotation import init_qt5
+from calour.util import get_config_value
 
 logger = getLogger(__name__)
 
@@ -112,19 +113,26 @@ def show_enriched_terms_qt5(cdb, group1, group2=None, exp=None, max_id=None, gro
             logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
     kwargs['ignore_exp'] = ignore_exp
 
-    # Ask user whether to do card_enrichment (normalize number of annotations per sequence - used for background enrichment) or diff_enrichment (used for differential abundance results)
-    a = QtWidgets.QMessageBox()
-    a.setText('Select dbBact term enrichment method:\nCard for background comparison enrichment\nDiff for two group (diff. abundance result) enrichment')
-    a.setWindowTitle('Term enrichment method')
-    a.setIcon(QtWidgets.QMessageBox.Question)
-    a.addButton("Card", QtWidgets.QMessageBox.YesRole)
-    a.addButton("Diff", QtWidgets.QMessageBox.NoRole)
-    a.addButton("Cancel", QtWidgets.QMessageBox.RejectRole)
-    res = a.exec_()
-    # cancel
-    if (res == 2):
-        logger.debug('cancel enrichment analysis')
-        return
+    method = 'meandiff'
+    transform_type = 'rankdata'
+    # we only show the enrichment method dialog if it is specified in the config file
+    # since the enrichment method is for advanced users...
+    show_enrich_method_dialog = get_config_value('show_enrich_method_dialog', section='dbbact').lower()
+    if show_enrich_method_dialog is not None:
+        if show_enrich_method_dialog == 'yes':
+            # Ask user whether to do card_enrichment (normalize number of annotations per sequence - used for background enrichment) or diff_enrichment (used for differential abundance results)
+            a = QtWidgets.QMessageBox()
+            a.setText('Select dbBact term enrichment method:\nCard for background comparison enrichment\nDiff for two group (diff. abundance result) enrichment')
+            a.setWindowTitle('Term enrichment method')
+            a.setIcon(QtWidgets.QMessageBox.Question)
+            a.addButton("Card", QtWidgets.QMessageBox.YesRole)
+            a.addButton("Diff", QtWidgets.QMessageBox.NoRole)
+            a.addButton("Cancel", QtWidgets.QMessageBox.RejectRole)
+            res = a.exec_()
+            # cancel
+            if (res == 2):
+                logger.debug('cancel enrichment analysis')
+                return
 
     # diff
     if (res == 1):
