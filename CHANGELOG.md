@@ -1,3 +1,9 @@
+## v1.10.0 (2021-08-11)
+
+### Feat
+
+- Add support for "parentterm" term_type in enrichment()
+
 ## v1.9.0 (2021-07-25)
 
 ### Feat
