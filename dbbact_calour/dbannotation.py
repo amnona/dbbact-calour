@@ -18,7 +18,7 @@ logger = getLogger(__name__)
 
 # the global variable to store annotation history
 # for autofill of 'ALL' details
-# key is the md5 of the data, value is the annotations
+# key is the md5 of the experiment data, value is the annotation
 history = {}
 
 

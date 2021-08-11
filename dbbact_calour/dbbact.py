@@ -505,7 +505,7 @@ class DBBact(Database):
         from . import dbannotation
         dbannotation.update_annotation_gui(self, annotation, exp)
 
-    def enrichment(self, exp, features, bg_features=None, max_id=None, **kwargs):
+    def enrichment(self, exp, features, bg_features=None, max_id=None, term_type='term', **kwargs):
         '''Get the list of enriched terms in features compared to all other features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -522,8 +522,6 @@ class DBBact(Database):
             if None, use all features in exp not found in "features" as bg_features
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
-
-        **kwargs: additional parameters supplied to db_access.term_enrichment(). These include:
         term_type : str or None (optional)
             The type of annotation data to test for enrichment
             options are:
@@ -531,6 +529,8 @@ class DBBact(Database):
             'parentterm' - ontology terms including parent terms associated with each feature.
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
+
+        **kwargs: additional parameters supplied to db_access.term_enrichment(). These include:
         ignore_exp: list of int or None or True, optional
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
@@ -596,7 +596,11 @@ class DBBact(Database):
                 raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
 
         # add all annotations to experiment if not already added
-        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
+        # note that if we use the "parentterm" option, we also want to get the parent terms
+        get_parents = False
+        if term_type == 'parentterm':
+            get_parents = True
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False, get_parents=get_parents)
 
         ignore_exp = kwargs.get('ignore_exp')
         # if ignore exp is True, it means we should ignore the current experiment
@@ -608,7 +612,7 @@ class DBBact(Database):
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
 
-        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'], seq_annotations=exp.databases['dbbact']['sequence_annotations'], term_info=exp.databases['dbbact'].get('term_info'), **kwargs)
+        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'].deepcopy(), seq_annotations=exp.databases['dbbact']['sequence_annotations'], term_info=exp.databases['dbbact'].get('term_info'), term_type=term_type, **kwargs)
         return res
 
     def background_enrich(self, terms, exp, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
