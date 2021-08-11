@@ -932,6 +932,12 @@ class DBAccess():
             the dbbact assigned taxonomy for each sequence
         '''
         logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
+        if max_id is not None:
+            logger.info('Limited to maximal annotationid: %d' % max_id)
+        if get_parents:
+            logger.debug('Getting also parents')
+        if get_term_info:
+            logger.debug('Getting also term_info')
         rdata = {}
         rdata['sequences'] = list(sequences)
         rdata['get_term_info'] = get_term_info
@@ -1332,7 +1338,31 @@ class DBAccess():
             feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'parentterm':
             # score for each term including the parent terms (based on the ontology structure) for each term
-            raise ValueError('parentterm not supported yet')
+            # make sure we have the ontology parents
+            annotation_iterator = iter(all_annotations.values())
+            first_annotation = next(annotation_iterator)
+            if 'parents' not in first_annotation:
+                raise ValueError('Annotations do not seem to contain parent terms. sample annotation:\n%s' % first_annotation)
+
+            # let's add all parent terms to annotations
+            logger.debug('adding parent terms')
+            for cannotation_id, cannotation in all_annotations.items():
+                details = cannotation['details']
+                old_details_terms = set([x[1] for x in details])
+                for cdir, cterms in cannotation['parents'].items():
+                    for cpterm in cterms:
+                        if len(cpterm) == 0:
+                            continue
+                        if cpterm in old_details_terms:
+                            continue
+                        details.append([cdir, cpterm, 'parent'])
+                        old_details_terms.add(cpterm)
+                cannotation['details'] = details
+                all_annotations[cannotation_id] = cannotation
+
+            # score for each term
+            logger.debug('getting "terms" per feature')
+            feature_terms = self._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
         elif term_type == 'annotation':
             # score for each annotation
             logger.debug('getting "annotations" per feature')
@@ -1392,6 +1422,9 @@ class DBAccess():
         new_term_list = []
         orig_term_list = term_list.copy()
         for cterm in term_list:
+            if len(cterm) == 0:
+                print('EMPTY????')
+                cterm = 'EMPTY???'
             if cterm[0] == '-':
                 ccterm = 'LOWER IN ' + cterm[1:]
                 cterm = cterm[1:]
