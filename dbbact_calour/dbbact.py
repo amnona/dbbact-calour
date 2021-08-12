@@ -612,7 +612,7 @@ class DBBact(Database):
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
 
-        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=exp.databases['dbbact']['annotations'].deepcopy(), seq_annotations=exp.databases['dbbact']['sequence_annotations'], term_info=exp.databases['dbbact'].get('term_info'), term_type=term_type, **kwargs)
+        res = self.db.term_enrichment(g1_features=features, g2_features=bg_features, all_annotations=deepcopy(exp.databases['dbbact']['annotations']), seq_annotations=exp.databases['dbbact']['sequence_annotations'], term_info=exp.databases['dbbact'].get('term_info'), term_type=term_type, **kwargs)
         return res
 
     def background_enrich(self, terms, exp, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
