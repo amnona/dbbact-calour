@@ -1,3 +1,9 @@
+## v1.10.1 (2021-08-12)
+
+### Fix
+
+- fix deepcopy in enrichment()
+
 ## v1.10.0 (2021-08-11)
 
 ### Feat
