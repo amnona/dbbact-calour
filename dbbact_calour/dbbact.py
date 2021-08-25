@@ -33,6 +33,7 @@ Functions
    DBBact.show_enrichment_qt5
    DBBact.background_enrich
    DBBact.set_password
+   DBBact.sample_to_many_enrich
 '''
 
 from collections import defaultdict
@@ -1922,7 +1923,7 @@ class DBBact(Database):
         clog = getLogger('dbbact_calour')
         clog.setLevel(level)
 
-    def sample_to_many_enrich(self, exp1, exp2, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
+    def sample_to_many_enrich(self, exp1, exp2, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1, **kwargs):
         '''Find dbbact term enrichment comparing experiment sequences (COMMON bacteria) to all sequences in dbbact associated with the terms
 
         Parameters
@@ -1940,11 +1941,15 @@ class DBBact(Database):
         include_shared: bool, optional
             True: keep sequences present in both background and experiment (add them to both groups)
             False: ignore sequences present in both background and experiment (remove from both groups)
+        alpha: float, optional
+            The FDR q-value for the enrichment test
+        **kwargs:
+            additional parameters for the dbbact_calour.enrichment() function
 
         Returns
         -------
         Pandas.DataFrame of enriched terms for common terms in current experiment compared to background dbBact experiments.
-        Positive is higher in dbbact background seqs, negative is higher in the experiment seqs
+        Positive is higher (enriched) in exp2 sequencess, negative is higher (enriched) in exp1 sequences
             feature : str the feature
             pval : the p-value for the enrichment (float)
             odif : the effect size (float)
@@ -1964,17 +1969,12 @@ class DBBact(Database):
             group: int the group (1/2) to which the feature belongs
             sequence: str
         '''
-        logger.info('preparing data')
+        logger.debug('preparing data')
 
         # remove shared bacteria between query and background if include_shared is False
         # NOT IMPLEMENTED
         if not include_shared:
             raise ValueError('not implemented yet')
-            shared_seqs = set(seqs).intersection(set(exp.feature_metadata.index.values))
-            logger.debug('removing %d shared sequences' % len(shared_seqs))
-            seqs = list(set(seqs).difference(shared_seqs))
-            logger.debug('%d bg seqs remaining' % len(seqs))
-            exp = exp.filter_ids(list(shared_seqs), negate=True)
 
         # get a list of all sequences in each experiment (each sequence multiplied by the number of samples it appears in)
         seqs1 = []
@@ -1991,18 +1991,15 @@ class DBBact(Database):
 
         all_seqs = seqs1 + seqs2
         all_seqs_set = list(set(all_seqs))
-        # create the experiment
+
+        # create the experiment with each sequence repeated according to the number of samples it appeared in
         features = pd.DataFrame(list(set(all_seqs)), columns=['_feature_id'])
         features = features.set_index('_feature_id', drop=False)
         samples = cexp.sample_metadata.copy()
         aa = AmpliconExperiment(data=np.ones([len(samples), len(all_seqs_set)]), sample_metadata=samples, feature_metadata=features).normalize()
-        # bb = exp.join_experiments(aa, field='pita', prefixes=['e1', 'e2'])
-        # logger.info('getting annotations for %d sequences' % len(bb.feature_metadata))
-        # bb = bb.add_terms_to_features('dbbact')
-        # logger.info('copying exp info')
         aa.info = exp1.info.copy()
-        logger.info('Calculating diff. abundance')
-        cc = self.enrichment(aa, seqs1, bg_features=seqs2, ignore_exp=ignore_exp, alpha=alpha)
+        logger.debug('Calculating diff. abundance')
+        cc = self.enrichment(aa, seqs1, bg_features=seqs2, ignore_exp=ignore_exp, alpha=alpha, **kwargs)
         return cc
 
 
