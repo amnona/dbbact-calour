@@ -1,3 +1,13 @@
+## v1.11.0 (2021-08-25)
+
+### Feat
+
+- Added sample_to_many_enrich() to identify features enriched in one set of samples (even one sample) compared to another set of samples
+
+### Fix
+
+- **requirements.txt**: add requests to requirements so importing dbbact-calour will work
+
 ## v1.10.1 (2021-08-12)
 
 ### Fix
