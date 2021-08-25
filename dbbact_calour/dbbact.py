@@ -1922,6 +1922,89 @@ class DBBact(Database):
         clog = getLogger('dbbact_calour')
         clog.setLevel(level)
 
+    def sample_to_many_enrich(self, exp1, exp2, ignore_exp=True, min_appearance=2, include_shared=True, alpha=0.1):
+        '''Find dbbact term enrichment comparing experiment sequences (COMMON bacteria) to all sequences in dbbact associated with the terms
+
+        Parameters
+        ----------
+        db: DBAcess
+            the database interface (for accessing dbBact)
+        exp1, exp2: calour.AmpliconExperiment
+            The two experiments to compare (we take the sequences from them). One could contain one sample and the other many samples
+        ignore_exp: None or bool or list of int, optional
+            int: dbBact Experiment IDs to ignore when fetching sequences associated with the terms
+            True: ignore annotations from the current experiment
+            None: do not ignore any annotations
+        min_appearance: int, optional
+            keep only sequences associated with the terms in at least min_appearance annotations
+        include_shared: bool, optional
+            True: keep sequences present in both background and experiment (add them to both groups)
+            False: ignore sequences present in both background and experiment (remove from both groups)
+
+        Returns
+        -------
+        Pandas.DataFrame of enriched terms for common terms in current experiment compared to background dbBact experiments.
+        Positive is higher in dbbact background seqs, negative is higher in the experiment seqs
+            feature : str the feature
+            pval : the p-value for the enrichment (float)
+            odif : the effect size (float)
+            observed : the number of observations of this term in group1 (int)
+            expected : the expected (based on all features) number of observations of this term in group1 (float)
+            frac_group1 : fraction of total terms in group 1 which are the specific term (float)
+            frac_group2 : fraction of total terms in group 2 which are the specific term (float)
+            num_group1 : number of total terms in group 1 which are the specific term (float)
+            num_group2 : number of total terms in group 2 which are the specific term (float)
+            num_enriched_exps: number of experiments where the term is significantly enriched
+            num_enriched_annotations: number of annotations where the term is significantly enriched
+            num_total_exps: number of experiments with this annotation in the term annotations list
+            description : the term (str)
+        numpy.Array where rows are features (ordered like the dataframe), columns are features and value is score
+            for term in feature
+        pandas.DataFrame with info about the features used. columns:
+            group: int the group (1/2) to which the feature belongs
+            sequence: str
+        '''
+        logger.info('preparing data')
+
+        # remove shared bacteria between query and background if include_shared is False
+        # NOT IMPLEMENTED
+        if not include_shared:
+            raise ValueError('not implemented yet')
+            shared_seqs = set(seqs).intersection(set(exp.feature_metadata.index.values))
+            logger.debug('removing %d shared sequences' % len(shared_seqs))
+            seqs = list(set(seqs).difference(shared_seqs))
+            logger.debug('%d bg seqs remaining' % len(seqs))
+            exp = exp.filter_ids(list(shared_seqs), negate=True)
+
+        # get a list of all sequences in each experiment (each sequence multiplied by the number of samples it appears in)
+        seqs1 = []
+        for cval, cexp in exp1.iterate():
+            cexp = cexp.filter_mean_abundance(0, strict=True)
+            seqs1.extend(cexp.feature_metadata.index.values)
+
+        seqs2 = []
+        for cval, cexp in exp2.iterate():
+            cexp = cexp.filter_mean_abundance(0, strict=True)
+            seqs2.extend(cexp.feature_metadata.index.values)
+
+        logger.debug('using %d sequences for exp1, %d sequences for exp2' % (len(set(seqs1)), len(set(seqs2))))
+
+        all_seqs = seqs1 + seqs2
+        all_seqs_set = list(set(all_seqs))
+        # create the experiment
+        features = pd.DataFrame(list(set(all_seqs)), columns=['_feature_id'])
+        features = features.set_index('_feature_id', drop=False)
+        samples = cexp.sample_metadata.copy()
+        aa = AmpliconExperiment(data=np.ones([len(samples), len(all_seqs_set)]), sample_metadata=samples, feature_metadata=features).normalize()
+        # bb = exp.join_experiments(aa, field='pita', prefixes=['e1', 'e2'])
+        # logger.info('getting annotations for %d sequences' % len(bb.feature_metadata))
+        # bb = bb.add_terms_to_features('dbbact')
+        # logger.info('copying exp info')
+        aa.info = exp1.info.copy()
+        logger.info('Calculating diff. abundance')
+        cc = self.enrichment(aa, seqs1, bg_features=seqs2, ignore_exp=ignore_exp, alpha=alpha)
+        return cc
+
 
 def _get_color(word, font_size, position, orientation, font_path, random_state, fscore, recall, precision, term_count):
     '''Get the color for a wordcloud term based on the term_count and higher/lower

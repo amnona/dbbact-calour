@@ -4,6 +4,7 @@ flake8
 numpy
 scipy
 pyqt5
+requests
 pandas
 matplotlib
 h5py

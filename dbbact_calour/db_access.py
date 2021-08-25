@@ -730,6 +730,31 @@ class DBAccess():
         logger.error('Error getting expid from details')
         return None
 
+    def get_term_family_graph(self, terms, relation='both'):
+        '''Get the ontology parents/children graph for a set of terms
+
+        Parameters
+        ----------
+        terms: list of str
+            the terms to get the tree for
+        term_type: str
+            'both' to get parents and children
+            'parent' to get only parents
+            'child' to get only children
+
+        Returns
+        -------
+        graph in networkx json format (node_link_data)
+        '''
+        rdata = {}
+        rdata['terms'] = terms
+        res = self._get('ontology/get_family_graph', rdata, param_json=True)
+        if res.status_code == 200:
+            graph = res.json()['family']
+            return graph
+        logger.error('Error getting get_term_family_graph.')
+        return None
+
     def get_experiment_info(self, expid):
         """
         get the information about a given experiment dataid
@@ -1311,6 +1336,8 @@ class DBAccess():
         g1_features = np.array(sorted(list(g1_features)))
         g2_features = np.array(sorted(list(g2_features)))
         exp_features = np.hstack([g1_features, g2_features])
+
+        logger.debug('using %s features for group1, %d features for group2' % (len(g1_features), len(g2_features)))
 
         # filter keeping only annotations containing focus_terms (if not None)
         if focus_terms is not None:
