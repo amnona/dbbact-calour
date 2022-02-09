@@ -202,13 +202,20 @@ def update_annotation_gui(dbclass, annotation, exp):
         for citem in qtlistiteritems(ui.blistall):
             cdat = qtlistgetdata(citem)
             cval = cdat['value']
+            cterm_id = cdat['term_id']
             ctype = cdat['type']
             # convert synonyms to original ontology terms
             if cval in DBAnnotateSave._ontology_from_id:
                 cval = DBAnnotateSave._ontology_from_id[cval]
             else:
                 logger.debug("item %s not found in ontologyfromid" % cval)
-            annotations.append((ctype, cval))
+
+            # if the user selected a specific term_id, use it
+            if cterm_id != '':
+                annotations.append((ctype, cterm_id))
+            # otherwise, use just the term description
+            else:
+                annotations.append((ctype, cval))
         # get annotation type
         if ui.bdiffpres.isChecked():
             annotation_type = 'DIFFEXP'
@@ -1232,3 +1239,124 @@ class SListWindow(QtWidgets.QDialog):
         for citem in items:
             spos = self.w_list.row(citem)
         return spos
+
+
+def new_term_parents_gui(dbclass, seqs, exp):
+    '''Create a dialog for annotating the bacteria into dbbact
+
+    Parameters
+    ----------
+    dbclass : dbbact.DBBact
+        the dbBact database to interact with
+    term : str
+        the new term to add
+    exp : Experiment
+        Experiment containing the sample and experiment metadata (i.e. md5 etc.)
+
+    Returns
+    -------
+    str
+        empty if ok, error details str if error enoucntered
+    '''
+    app, app_created = init_qt5()
+
+    # test if we have user/password set-up
+    test_user_password(dbclass.db)
+
+
+
+    # test if study already in database
+    cdata = dbclass.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'])
+    if cdata is None:
+        logger.info('Study does not exist in dbbact. Creating new study')
+        cdata = study_data_ui(exp)
+        if cdata is None:
+            msg = 'no study information added. Please add at least one field. Annotation cancelled'
+            logger.warn(msg)
+            return msg
+
+    show_and_ask('Please enter annotations for the study.\n'
+                 'Choose the annotation type. Annotations can be:\n'
+                 '"Differential abundance": High in one group compared to the other\n'
+                 '"Common": present in majority of the samples (prevalence)\n'
+                 '"Dominant": frequency of the bacteria is >1% (mean frequency)\n\n'
+                 'Then choose the terms (preferably from ontology autocomplete) relevant\n'
+                 'Note that for "Differential abundance", you need to choose the terms common to both groups (all),'
+                 'the terms in the group where the bacteria is higher (high) and where it is lower (low).\n'
+                 'For example, a fecal bacteria that is more common in females will be annotated as:\n'
+                 '"all": feces, homo sapience\n'
+                 '"low": male\n'
+                 '"high": female\n'
+                 'also, please supply as many terms as possible (host, material, country, disease, etc.)',
+                 keyval='annotation_info')
+
+    ui = DBAnnotateSave(seqs, exp, dbclass=dbclass, get_seq_region=True)
+    res = ui.exec_()
+    if res == QtWidgets.QDialog.Accepted:
+        description = str(ui.bdescription.text())
+        # TODO: need to get primer region!!!!
+        primerid = ui.primerid
+        # primerid = 'V4'
+        method = str(ui.bmethod.text())
+        if method == '':
+            method = 'na'
+        # TODO: fix submitter name
+        submittername = 'Amnon Amir'
+        annotations = []
+
+        for citem in qtlistiteritems(ui.blistall):
+            cdat = qtlistgetdata(citem)
+            cval = cdat['value']
+            cterm_id = cdat['term_id']
+            ctype = cdat['type']
+            # convert synonyms to original ontology terms
+            if cval in DBAnnotateSave._ontology_from_id:
+                cval = DBAnnotateSave._ontology_from_id[cval]
+            else:
+                logger.debug("item %s not found in ontologyfromid" % cval)
+
+            # if the user selected a specific term_id, use it
+            if cterm_id != '':
+                annotations.append((ctype, cterm_id))
+            # otherwise, use just the term description
+            else:
+                annotations.append((ctype, cval))
+        # get annotation type
+        if ui.bdiffpres.isChecked():
+            annotation_type = 'DIFFEXP'
+        elif ui.bisa.isChecked():
+            curtypeval = ui.bisatype.currentText()
+            if 'Common' in curtypeval:
+                annotation_type = 'COMMON'
+            elif 'Contam' in curtypeval:
+                annotation_type = 'CONTAMINATION'
+            elif 'Dominant' in curtypeval:
+                annotation_type = 'DOMINANT'
+            elif 'Positively associated' in curtypeval:
+                annotation_type = 'POSITIVE ASSOCIATION'
+            elif 'Negatively associated' in curtypeval:
+                annotation_type = 'NEGATIVE ASSOCIATION'
+            else:
+                annotation_type = 'OTHER'
+        else:
+            msg = "No annotation type selected. Annotation not saved"
+            logger.warn(msg)
+            return msg
+
+        logger.debug('Adding annotation to studyid %s' % cdata)
+        err, annotation_id = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
+        if err:
+            msg = 'Annotation not added. error: %s' % err
+            logger.warn(msg)
+            QtWidgets.QMessageBox.warning(None, 'Annotation not added', msg)
+            return msg
+        logger.debug('New annotation added. AnnotationId=%d' % annotation_id)
+        err, annotation_res = dbclass.db.get_annotation(annotation_id)
+        if err == '':
+            # store the history of the annotation for the next annotation of the same experiment (so description, details etc. will auto fill)
+            global history
+            history[exp.info['data_md5']] = annotation_res
+        else:
+            logger.warn('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotation_id)
+        return ''
+    return 'Add annotation cancelled'

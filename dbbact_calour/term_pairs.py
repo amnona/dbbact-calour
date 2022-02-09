@@ -185,6 +185,8 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 		debug(2, 'term_info was None, getting from dbbact')
 		term_info = get_term_info(list(all_terms), term_types=term_types)
 		# term_info = get_term_info(all_terms_positive, term_types=term_types)
+	else:
+		debug(1, 'term_info already supplied')
 
 	num_sequences = len(seqannotations)
 	debug(1, 'total sequences: %d' % num_sequences)
@@ -212,7 +214,7 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 				crecall = len(cexplist) / (observed + low_num_correction)
 			except:
 				observed = 0
-				debug(4, 'term %s does not have total_experiments ok' % cterm)
+				debug(1, 'term %s does not have total_experiments ok' % cterm)
 				# crecall = len(cexplist)
 				crecall = 0
 
