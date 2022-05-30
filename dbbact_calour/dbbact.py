@@ -2155,7 +2155,7 @@ class DBBact(Database):
                 plot_colors = exp.sample_metadata[field].astype('category').cat.codes
                 ccmap = mpl.cm.get_cmap(cmap)
                 for idx, clab in enumerate(exp.sample_metadata[field].astype('category').cat.categories):
-                        ch = mpl.lines.Line2D([], [], color=ccmap(norm(idx)), marker='o', linestyle='None', markersize=np.max(exp.sample_metadata['_calour_pcoa_sizes']), label=clab)
+                        ch = mpl.lines.Line2D([], [], color=ccmap(norm(idx)), marker='o', linestyle='None', markersize=size_scale, label=clab)
                         legend_h.append(ch)
         exp.sample_metadata['_calour_pcoa_colors'] = plot_colors
 
