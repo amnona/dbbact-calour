@@ -1,3 +1,9 @@
+## v1.12.0 (2022-05-30)
+
+### Feat
+
+- Add the plot_term_pcoa() function for plotting dbBact terms based PCA
+
 ## v1.11.0 (2021-08-25)
 
 ### Feat
