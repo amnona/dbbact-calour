@@ -1245,7 +1245,7 @@ class DBAccess():
 
     def term_enrichment(self, g1_features, g2_features, all_annotations, seq_annotations, term_info=None, term_type='term', ignore_exp=None, min_appearances=0,
                         fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1,
-                        method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None):
+                        method='meandiff', transform_type='rankdata', numperm=1000, min_exps=1, add_single_exp_warning=True, num_results_needed=0, focus_terms=None, focus_negate=None):
         '''Get the list of enriched terms in features compared to all features in exp.
 
         given uneven distribtion of number of terms per feature
@@ -1302,6 +1302,8 @@ class DBAccess():
             NOTE: using this keeps only num_results_needed significant terms!
         focus_terms: list of str or None, optional
             if not None, use only annotations containing all the terms in focus_terms
+        focus_negate: list of str or None, optional
+            if not None, throw away annotations with any of the focus_negate terms
 
         Returns
         -------
@@ -1344,13 +1346,33 @@ class DBAccess():
             logger.debug('filtering annotations for %d focus terms.' % len(focus_terms))
             seq_annotations = seq_annotations.copy()
             focus_terms = set(focus_terms)
-            ok_annotations = set()
+            # ok_annotations = set()
+            ok_annotations = {}
             for cid, cannotation in all_annotations.items():
                 found_terms = set()
                 for cdetail in cannotation['details']:
                     if cdetail[1] in focus_terms:
                         found_terms.add(cdetail[1])
                 if len(found_terms) == len(focus_terms):
+                    ok_annotations[cid] = cannotation
+            logger.debug('Keeping %d annotations out of %d original' % (len(ok_annotations), len(all_annotations)))
+            for k, v in seq_annotations.items():
+                nv = [x for x in v if x in ok_annotations]
+                seq_annotations[k] = nv
+
+        # filter keeping only annotations containing focus_terms (if not None)
+        if focus_negate is not None:
+            logger.debug('filtering annotations for %d focus_negate terms.' % len(focus_negate))
+            seq_annotations = seq_annotations.copy()
+            focus_negate = set(focus_negate)
+            # ok_annotations = set()
+            ok_annotations = {}
+            for cid, cannotation in all_annotations.items():
+                found_terms = set()
+                for cdetail in cannotation['details']:
+                    if cdetail[1] in focus_negate:
+                        found_terms.add(cdetail[1])
+                if len(found_terms) == 0:
                     ok_annotations[cid] = cannotation
             logger.debug('Keeping %d annotations out of %d original' % (len(ok_annotations), len(all_annotations)))
             for k, v in seq_annotations.items():
