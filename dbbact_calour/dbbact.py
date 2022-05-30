@@ -2024,7 +2024,7 @@ class DBBact(Database):
         cc = self.enrichment(aa, seqs1, bg_features=seqs2, ignore_exp=ignore_exp, alpha=alpha, **kwargs)
         return cc
 
-    def plot_term_pcoa(exp, field=None, pc1=0, pc2=1, term_type='term', freq_weight='linear', normalize_terms=False, ignore_exp=True, max_id=None, n_components=10, show_field='_sample_id', size_field=None, size_scale=10, marker_field=None, marker_order=['o', 'v', 's', '*', 'p', 'D', '+', 'x', '.', 'X'], edgecolors='black', cmap=None, permute_samples=True, **kwargs):
+    def plot_term_pcoa(self, exp, field=None, pc1=0, pc2=1, term_type='term', freq_weight='linear', normalize_terms=False, ignore_exp=True, max_id=None, n_components=10, show_field='_sample_id', size_field=None, size_scale=10, marker_field=None, marker_order=['o', 'v', 's', '*', 'p', 'D', '+', 'x', '.', 'X'], edgecolors='black', cmap=None, permute_samples=True, **kwargs):
         '''
         Parameters
         ----------
