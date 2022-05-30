@@ -34,6 +34,7 @@ Functions
    DBBact.background_enrich
    DBBact.set_password
    DBBact.sample_to_many_enrich
+   DBBact.plot_term_pcoa
 '''
 
 from collections import defaultdict
@@ -45,6 +46,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 from .db_access import DBAccess
 from .term_pairs import get_enrichment_score, get_terms
@@ -53,6 +55,7 @@ from calour.util import _to_list, get_config_value, set_config_value
 from calour.database import Database
 from calour.experiment import Experiment
 from calour.amplicon_experiment import AmpliconExperiment
+import calour as ca
 
 logger = getLogger(__name__)
 
@@ -786,6 +789,8 @@ class DBBact(Database):
             term = term.lstrip('LOWER IN ')
             term = term.rstrip(' *')
         self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
+        if features is None:
+            features = exp.feature_metadata.index.values
         tmat, tanno, tseqs = self.db.get_term_annotations(term, features, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         newexp = AmpliconExperiment(tmat.T, sample_metadata=tanno, feature_metadata=tseqs)
         return newexp
@@ -1357,12 +1362,11 @@ class DBBact(Database):
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
         return dd
 
-    def sample_term_scores(self, exp, term_type='term', ignore_exp=None, min_appearances=3, score_method='all_mean', freq_weight='log', use_term_pairs=False, max_id=None, axis='s'):
+    def sample_term_scores(self, exp, term_type='term', ignore_exp=None, min_term_score=0, score_method='all_mean', freq_weight='log', use_term_pairs=False, max_id=None, axis='s', min_appearances=None, use_precision=True):
         '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
         (where the numbers are how strong is the term associated with the feature based on database annotations using score_method).
-        A differntial abundance test (using dsFDR multiple hypothesis correction) is then performed on the resulting sample X term matrix.
 
         Parameters
         ----------
@@ -1380,8 +1384,10 @@ class DBBact(Database):
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
-        min_appearances : int (optional)
-            The minimal number of times a term appears in order to include in output list.
+        min_term_score : int (optional)
+            The minimal score of a term in a feature in order to include in output (otherwise it is set to 0).
+            Prior to the matrix multiplication, on the feature X term matrix, for each feature and term, the corresponding value in the matrix is set to 0 if score<min_term_score
+            This is used prior to per-term normalization in order to reduce the effect of spurious terms (appearing in a small number of annotations for a given feature)
         score_method : str (optional)
             The score method used for calculating the term score. Options are:
             'all_mean' (default): mean over each experiment of all annotations containing the term
@@ -1400,6 +1406,9 @@ class DBBact(Database):
         axis: str or int, optional
             's' or 1 to return per-sample term scores experiment
             'f' or 0 to return per-feature term scores experiment
+        use_precision: bool, optional
+            if True, return precision values (i.e. fraction of annotations for each feature contatining each term) as the scores (float range 0-1)
+            if False, return total number of annotations containing the term for each feature (positive integer)
 
         Returns
         -------
@@ -1431,7 +1440,7 @@ class DBBact(Database):
         elif term_type == 'parentterm':
             raise ValueError('term_type parentterm not supported yet')
         elif term_type == 'annotation':
-            feature_terms = self.db._get_all_annotation_string_counts(exp_features, all_anntations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
+            feature_terms = self.db._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
         elif term_type == 'combined':
             feature_terms = self.db._get_all_term_counts(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, score_method=score_method, use_term_pairs=use_term_pairs)
             feature_annotations = self.db._get_all_annotation_string_counts(exp_features, all_annotations=all_annotations, seq_annotations=seq_annotations, ignore_exp=ignore_exp)
@@ -1480,8 +1489,13 @@ class DBBact(Database):
             logger.debug('ranking the data')
             for ccol in range(np.shape(data)[1]):
                 data[:, ccol] = scipy.stats.rankdata(data[:, ccol])
+        elif freq_weight == 'rank2':
+            logger.debug('ranking the data (per sample)')
+            for crow in range(np.shape(data)[0]):
+                data[crow, :] = scipy.stats.rankdata(data[crow, :])
+            data = data / np.sum(data, axis=1)[:, np.newaxis]
         else:
-            raise ValueError('unknown freq_weight option %s. Can use ["log", "binary","linear"].')
+            raise ValueError('unknown freq_weight option %s. Can use ["log", "binary","linear", "rank", "rank2"].')
 
         if axis == 's':
             # create the sample x term results array
@@ -1490,8 +1504,15 @@ class DBBact(Database):
             # iterate over all features and add to all terms associated with the feature
             for idx, cfeature in enumerate(exp_features):
                 fterms = feature_terms[cfeature]
+                tot_fterms = 0
                 for cterm, cval in fterms:
-                    fs_array[:, terms[cterm]] += cval * data[:, idx]
+                    tot_fterms += cval
+                for cterm, cval in fterms:
+                    # set to 0 term X feature where does not pass the min_term_score threshold (to remove spurious terms prior to normalization)
+                    if cval >= min_term_score:
+                        if use_precision:
+                            cval = cval / tot_fterms
+                        fs_array[:, terms[cterm]] += cval * data[:, idx]
 
             # create the new experiment with samples x terms
             sm = deepcopy(exp.sample_metadata)
@@ -1499,7 +1520,8 @@ class DBBact(Database):
             fm = pd.DataFrame(data={'term': sorted_term_list}, index=sorted_term_list)
             fm['num_features'] = [term_features[d] for d in fm.index]
         elif axis == 'f':
-            # create the sample x term results array
+            # NEED TO IMPLEMENT?!!!!!
+            # create the feature x term results array
             fs_array = np.zeros([exp.data.shape[1], len(terms)])
 
             # iterate over all features and add to all terms associated with the feature
@@ -2040,3 +2062,231 @@ def _get_color(word, font_size, position, orientation, font_path, random_state, 
     green = format(rgba[1], '02x')
     blue = format(rgba[2], '02x')
     return '#%s%s%s' % (red, green, blue)
+
+
+def plot_term_pcoa(exp, field=None, pc1=0, pc2=1, term_type='term', freq_weight='linear', normalize_terms=False, ignore_exp=True, max_id=None, n_components=10, show_field='_sample_id', size_field=None, size_scale=10, marker_field=None, marker_order=['o', 'v', 's', '*', 'p', 'D', '+', 'x', '.', 'X'], edgecolors='black', cmap=None, permute_samples=True, **kwargs):
+    '''
+    Parameters
+    ----------
+    exp : calour.Experiment
+        The experiment to compare the features to
+    field: str or None, optional
+        the files to color the samples by (can be numeric or categorical)
+    term_type : str or None (optional)
+        The type of annotation data to test for enrichment
+        options are:
+        'term' - ontology terms associated with each feature.
+        'parentterm' - ontology terms including parent terms associated with each feature.
+        'annotation' - the full annotation strings associated with each feature
+        'combined' - combine 'term' and 'annotation'
+        'fscore' - the fscore for each term (recall/precision)
+    freq_weight : str (optional)
+        How to incorporate the frequency of each feature (in a sample) into the term count for the sample. options:
+            'linear' : use the frequency
+            'log' : use the log2 of the frequency
+            'binary' : use the presence/absence of the feature
+            'rank' : use the rank of each feature across the same feature on all samples
+            'rank2' : use the rank of each feature within each sample (independent on other samples)
+    normalize_terms: bool, optional
+        if True, normalize each term score (not recommended)
+    ignore_exp: list of int or None or True, optional
+        List of experiments to ignore in the analysis
+        True to ignore annotations from the current experiment
+        None (default) to use annotations from all experiments including the current one
+    max_id: int or None, optional
+        the maximal dbBact annotation id to use for the terms
+    n_components: int, optional
+        the number of PCA dimensions to calculate
+    show_field: str or None, optional
+        if str, name of the field value to show on mouse hover (works only with %matploblib widget enabled)
+        None - disable the mouse hover
+    size_field: str or None, optional
+        the field to use for the sample sizes (must be numeric)
+    size_scale: float, optional
+        the scaling to apply to each sample marker size
+    marker_field: str or None, optional
+        the field to use for the marker shapes. marker shapes are taken from marker_order parameter
+    marker_order: list of str, optional
+        the marker shapes for the different marker_field values. see matplotlib marker shapes
+    edgecolors: str or None, optional
+        the marker edge color. None to not plot marker edges
+    cmap: str or None, optional
+        if None, automaticallly choose the colormap based on the numeric/categorical nature of the field parameter
+    permute_samples: bool, optional
+        if True, randomly permute the sample plotting order (to remove order-dependent artifacts)
+    **kwargs:
+        passed to dbbact-calour.dbbact.sample_term_scores(), Include:
+            use_precision: bool, optional (default is True)
+                if True, return precision values (i.e. fraction of annotations for each feature contatining each term) as the scores (float range 0-1)
+                if False, return total number of annotations containing the term for each feature (positive integer)
+            in_term_score : int (optional)
+                The minimal score of a term in a feature in order to include in output (otherwise it is set to 0).
+                Prior to the matrix multiplication, on the feature X term matrix, for each feature and term, the corresponding value in the matrix is set to 0 if score<min_term_score
+                This is used prior to per-term normalization in order to reduce the effect of spurious terms (appearing in a small number of annotations for a given feature)
+            Use_term_pairs: bool, optional
+                True to get all term pair annotations (i.e. human+feces etc.)
+
+    Returns
+    -------
+    fig: matplotlib.figure
+        the figure containing the pcoa
+    coords:
+    pca:
+    term_exp: calour.Experiment
+        containing the original experiment samples as samples, features are dbbact terms, and the sample/term data is the term score for the sample
+    axis_coords:
+
+    '''
+    from sklearn.decomposition import PCA
+
+    logger.info('Calculating per-ASV term scores')
+    db = ca.database._get_database_class('dbbact')
+    term_exp = db.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, freq_weight=freq_weight, max_id=max_id, **kwargs)
+    # get rid of features not present in any sample (if we used min_term_score)
+    term_exp = term_exp.filter_sum_abundance(0, strict=True)
+
+    if normalize_terms:
+        term_exp = term_exp.normalize(1, axis='f')
+
+    term_exp.data = np.sqrt(term_exp.data)
+    term_exp.sparse = False
+    # term_exp.data = scipy.stats.rankdata(term_exp.data, axis=0)
+
+    pca = PCA(n_components=n_components)
+    coords = pca.fit_transform(term_exp.get_data(sparse=False))
+
+    exp = exp.copy()
+    exp.sample_metadata['_calour_pc1'] = coords[:, pc1]
+    exp.sample_metadata['_calour_pc2'] = coords[:, pc2]
+
+    logger.info('plotting')
+    fig = plt.figure(figsize=[10, 10])
+    ax = plt.gca()
+
+    # set up the per-sample sizes in _calour_pcoa_sizes
+    vals = []
+    if size_field is None:
+        sizes = size_scale ** 2
+    else:
+        sizes = (size_scale * exp.sample_metadata[size_field]) ** 2
+    exp.sample_metadata['_calour_pcoa_sizes'] = sizes
+
+    legend_h = []
+
+    # set up the per-sample colors in _calour_pcoa_colors and the colormap
+    if field is None:
+        plot_colors = 'b'
+        if cmap is None:
+            cmap = 'hsv'
+    else:
+        # if it is numeric, select appropriate colormap and normalizer
+        field_vals = exp.sample_metadata[field]
+        if pd.to_numeric(field_vals, errors='coerce').notnull().all():
+            plot_colors = field_vals.values
+            norm = mpl.colors.Normalize(vmin=np.min(field_vals), vmax=np.max(field_vals))
+            if cmap is None:
+                cmap = 'PuBu_r'
+        else:
+            # not numeric - so discrete values
+            if cmap is None:
+                cmap = 'hsv'
+            vals = field_vals.unique()
+            norm = mpl.colors.Normalize(vmin=0, vmax=len(vals))
+            plot_colors = exp.sample_metadata[field].astype('category').cat.codes
+            ccmap = mpl.cm.get_cmap(cmap)
+            for idx, clab in enumerate(exp.sample_metadata[field].astype('category').cat.categories):
+                    ch = mpl.lines.Line2D([], [], color=ccmap(norm(idx)), marker='o', linestyle='None', markersize=np.max(exp.sample_metadata['_calour_pcoa_sizes']), label=clab)
+                    legend_h.append(ch)
+    exp.sample_metadata['_calour_pcoa_colors'] = plot_colors
+
+    # set up the per-sample markers in _calour_pcoa_markers
+    if marker_field is None:
+        markers = '.'
+    else:
+        marker_ids = exp.sample_metadata[marker_field].astype('category').cat.codes
+        markers = [marker_order[x % len(marker_order)] for x in marker_ids]
+        for idx, clab in enumerate(exp.sample_metadata[marker_field].astype('category').cat.categories):
+                ch = mpl.lines.Line2D([], [], color='white', marker=marker_order[idx % len(marker_order)], linestyle='None', markersize=size_scale, label=clab, markeredgecolor='black')
+                legend_h.append(ch)
+    exp.sample_metadata['_calour_pcoa_markers'] = markers
+
+    # randomly permute the samples so we don't get artifact by sample order in dense data where last ones are observed more since on top
+    if permute_samples:
+        exp = exp.reorder(np.random.permutation(np.arange(len(exp.sample_metadata))), axis='s')
+
+    # the scatter plot (we iterate to keep the random order)
+    paths = []
+    for csamp_id, crow in exp.sample_metadata.iterrows():
+        sc = plt.scatter(crow['_calour_pc1'], crow['_calour_pc2'], c=crow['_calour_pcoa_colors'], marker=crow['_calour_pcoa_markers'], s=crow['_calour_pcoa_sizes'], norm=norm, cmap=cmap, edgecolors=edgecolors)
+        paths.append(sc.get_paths())
+
+    # create the legend
+    # colors
+
+    codes = dict(enumerate(exp.sample_metadata[field].astype('category').cat.categories))
+    plt.legend(handles=sc.legend_elements()[0], labels=[codes[x] for x in range(len(codes))])
+
+    # set the axis titles
+    axis_coords = []
+    for caxis in range(n_components):
+        sorted_pos_rev = np.argsort(pca.components_[caxis])[::-1]
+        sorted_pos = np.argsort(pca.components_[caxis])
+        top_terms = [term_exp.feature_metadata.iloc[aaa]['term'] for aaa in sorted_pos_rev[:4]]
+        low_terms = [term_exp.feature_metadata.iloc[aaa]['term'] for aaa in sorted_pos[:4]]
+        label = '(-) '
+        for idx2, ctop_term in enumerate(low_terms):
+            if pca.components_[caxis][sorted_pos[idx2]] > 0:
+                continue
+            label += '%s, ' % ctop_term
+        label += '%f: ' % pca.explained_variance_ratio_[caxis]
+        for idx2, ctop_term in enumerate(top_terms):
+            if pca.components_[caxis][sorted_pos_rev[idx2]] < 0:
+                continue
+            label += '%s, ' % ctop_term
+        label += ' (+)'
+        axis_coords.append(label)
+
+    plt.xlabel(axis_coords[pc1])
+    plt.ylabel(axis_coords[pc2])
+
+    ax.axes.xaxis.set_ticks([])
+    ax.axes.yaxis.set_ticks([])
+
+    plt.legend(handles=legend_h)
+
+    # attach the mouse hover info
+    # NOTE: this only works with %matplotlib widget
+    sc = mpl.collections.PathCollection(paths)
+    if show_field is not None:
+        annot = ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
+                            bbox=dict(boxstyle="round", fc="w"),
+                            arrowprops=dict(arrowstyle="->"))
+        annot.set_visible(False)
+
+        def update_annot(ind):
+            names = exp.sample_metadata[show_field].values
+            pos = sc.get_offsets()[ind["ind"][0]]
+            annot.xy = pos
+            text = "{}".format(" ".join([names[n] for n in ind["ind"]]))
+            annot.set_text(text)
+            annot.get_bbox_patch().set_facecolor('lightgrey')
+            # annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
+            annot.get_bbox_patch().set_alpha(0.9)
+
+        def hover(event):
+            vis = annot.get_visible()
+            if event.inaxes == ax:
+                cont, ind = sc.contains(event)
+                if cont:
+                    update_annot(ind)
+                    annot.set_visible(True)
+                    fig.canvas.draw_idle()
+                else:
+                    if vis:
+                        annot.set_visible(False)
+                        fig.canvas.draw_idle()
+
+        fig.canvas.mpl_connect("motion_notify_event", hover)
+        plt.show()
+
+    return fig, coords, pca, term_exp, axis_coords
