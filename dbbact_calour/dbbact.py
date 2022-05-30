@@ -2024,6 +2024,233 @@ class DBBact(Database):
         cc = self.enrichment(aa, seqs1, bg_features=seqs2, ignore_exp=ignore_exp, alpha=alpha, **kwargs)
         return cc
 
+    def plot_term_pcoa(exp, field=None, pc1=0, pc2=1, term_type='term', freq_weight='linear', normalize_terms=False, ignore_exp=True, max_id=None, n_components=10, show_field='_sample_id', size_field=None, size_scale=10, marker_field=None, marker_order=['o', 'v', 's', '*', 'p', 'D', '+', 'x', '.', 'X'], edgecolors='black', cmap=None, permute_samples=True, **kwargs):
+        '''
+        Parameters
+        ----------
+        exp : calour.Experiment
+            The experiment to compare the features to
+        field: str or None, optional
+            the files to color the samples by (can be numeric or categorical)
+        term_type : str or None (optional)
+            The type of annotation data to test for enrichment
+            options are:
+            'term' - ontology terms associated with each feature.
+            'parentterm' - ontology terms including parent terms associated with each feature.
+            'annotation' - the full annotation strings associated with each feature
+            'combined' - combine 'term' and 'annotation'
+            'fscore' - the fscore for each term (recall/precision)
+        freq_weight : str (optional)
+            How to incorporate the frequency of each feature (in a sample) into the term count for the sample. options:
+                'linear' : use the frequency
+                'log' : use the log2 of the frequency
+                'binary' : use the presence/absence of the feature
+                'rank' : use the rank of each feature across the same feature on all samples
+                'rank2' : use the rank of each feature within each sample (independent on other samples)
+        normalize_terms: bool, optional
+            if True, normalize each term score (not recommended)
+        ignore_exp: list of int or None or True, optional
+            List of experiments to ignore in the analysis
+            True to ignore annotations from the current experiment
+            None (default) to use annotations from all experiments including the current one
+        max_id: int or None, optional
+            the maximal dbBact annotation id to use for the terms
+        n_components: int, optional
+            the number of PCA dimensions to calculate
+        show_field: str or None, optional
+            if str, name of the field value to show on mouse hover (works only with %matploblib widget enabled)
+            None - disable the mouse hover
+        size_field: str or None, optional
+            the field to use for the sample sizes (must be numeric)
+        size_scale: float, optional
+            the scaling to apply to each sample marker size
+        marker_field: str or None, optional
+            the field to use for the marker shapes. marker shapes are taken from marker_order parameter
+        marker_order: list of str, optional
+            the marker shapes for the different marker_field values. see matplotlib marker shapes
+        edgecolors: str or None, optional
+            the marker edge color. None to not plot marker edges
+        cmap: str or None, optional
+            if None, automaticallly choose the colormap based on the numeric/categorical nature of the field parameter
+        permute_samples: bool, optional
+            if True, randomly permute the sample plotting order (to remove order-dependent artifacts)
+        **kwargs:
+            passed to dbbact-calour.dbbact.sample_term_scores(), Include:
+                use_precision: bool, optional (default is True)
+                    if True, return precision values (i.e. fraction of annotations for each feature contatining each term) as the scores (float range 0-1)
+                    if False, return total number of annotations containing the term for each feature (positive integer)
+                in_term_score : int (optional)
+                    The minimal score of a term in a feature in order to include in output (otherwise it is set to 0).
+                    Prior to the matrix multiplication, on the feature X term matrix, for each feature and term, the corresponding value in the matrix is set to 0 if score<min_term_score
+                    This is used prior to per-term normalization in order to reduce the effect of spurious terms (appearing in a small number of annotations for a given feature)
+                Use_term_pairs: bool, optional
+                    True to get all term pair annotations (i.e. human+feces etc.)
+
+        Returns
+        -------
+        fig: matplotlib.figure
+            the figure containing the pcoa
+        coords:
+        pca:
+        term_exp: calour.Experiment
+            containing the original experiment samples as samples, features are dbbact terms, and the sample/term data is the term score for the sample
+        axis_coords:
+
+        '''
+        from sklearn.decomposition import PCA
+
+        logger.info('Calculating per-ASV term scores')
+        db = ca.database._get_database_class('dbbact')
+        term_exp = db.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, freq_weight=freq_weight, max_id=max_id, **kwargs)
+        # get rid of features not present in any sample (if we used min_term_score)
+        term_exp = term_exp.filter_sum_abundance(0, strict=True)
+
+        if normalize_terms:
+            term_exp = term_exp.normalize(1, axis='f')
+
+        term_exp.data = np.sqrt(term_exp.data)
+        term_exp.sparse = False
+        # term_exp.data = scipy.stats.rankdata(term_exp.data, axis=0)
+
+        pca = PCA(n_components=n_components)
+        coords = pca.fit_transform(term_exp.get_data(sparse=False))
+
+        exp = exp.copy()
+        exp.sample_metadata['_calour_pc1'] = coords[:, pc1]
+        exp.sample_metadata['_calour_pc2'] = coords[:, pc2]
+
+        logger.info('plotting')
+        fig = plt.figure(figsize=[10, 10])
+        ax = plt.gca()
+
+        # set up the per-sample sizes in _calour_pcoa_sizes
+        vals = []
+        if size_field is None:
+            sizes = size_scale ** 2
+        else:
+            sizes = (size_scale * exp.sample_metadata[size_field]) ** 2
+        exp.sample_metadata['_calour_pcoa_sizes'] = sizes
+
+        legend_h = []
+
+        # set up the per-sample colors in _calour_pcoa_colors and the colormap
+        if field is None:
+            plot_colors = 'b'
+            if cmap is None:
+                cmap = 'hsv'
+        else:
+            # if it is numeric, select appropriate colormap and normalizer
+            field_vals = exp.sample_metadata[field]
+            if pd.to_numeric(field_vals, errors='coerce').notnull().all():
+                plot_colors = field_vals.values
+                norm = mpl.colors.Normalize(vmin=np.min(field_vals), vmax=np.max(field_vals))
+                if cmap is None:
+                    cmap = 'PuBu_r'
+            else:
+                # not numeric - so discrete values
+                if cmap is None:
+                    cmap = 'hsv'
+                vals = field_vals.unique()
+                norm = mpl.colors.Normalize(vmin=0, vmax=len(vals))
+                plot_colors = exp.sample_metadata[field].astype('category').cat.codes
+                ccmap = mpl.cm.get_cmap(cmap)
+                for idx, clab in enumerate(exp.sample_metadata[field].astype('category').cat.categories):
+                        ch = mpl.lines.Line2D([], [], color=ccmap(norm(idx)), marker='o', linestyle='None', markersize=np.max(exp.sample_metadata['_calour_pcoa_sizes']), label=clab)
+                        legend_h.append(ch)
+        exp.sample_metadata['_calour_pcoa_colors'] = plot_colors
+
+        # set up the per-sample markers in _calour_pcoa_markers
+        if marker_field is None:
+            markers = '.'
+        else:
+            marker_ids = exp.sample_metadata[marker_field].astype('category').cat.codes
+            markers = [marker_order[x % len(marker_order)] for x in marker_ids]
+            for idx, clab in enumerate(exp.sample_metadata[marker_field].astype('category').cat.categories):
+                    ch = mpl.lines.Line2D([], [], color='white', marker=marker_order[idx % len(marker_order)], linestyle='None', markersize=size_scale, label=clab, markeredgecolor='black')
+                    legend_h.append(ch)
+        exp.sample_metadata['_calour_pcoa_markers'] = markers
+
+        # randomly permute the samples so we don't get artifact by sample order in dense data where last ones are observed more since on top
+        if permute_samples:
+            exp = exp.reorder(np.random.permutation(np.arange(len(exp.sample_metadata))), axis='s')
+
+        # the scatter plot (we iterate to keep the random order)
+        paths = []
+        for csamp_id, crow in exp.sample_metadata.iterrows():
+            sc = plt.scatter(crow['_calour_pc1'], crow['_calour_pc2'], c=crow['_calour_pcoa_colors'], marker=crow['_calour_pcoa_markers'], s=crow['_calour_pcoa_sizes'], norm=norm, cmap=cmap, edgecolors=edgecolors)
+            paths.append(sc.get_paths())
+
+        # create the legend
+        # colors
+
+        codes = dict(enumerate(exp.sample_metadata[field].astype('category').cat.categories))
+        plt.legend(handles=sc.legend_elements()[0], labels=[codes[x] for x in range(len(codes))])
+
+        # set the axis titles
+        axis_coords = []
+        for caxis in range(n_components):
+            sorted_pos_rev = np.argsort(pca.components_[caxis])[::-1]
+            sorted_pos = np.argsort(pca.components_[caxis])
+            top_terms = [term_exp.feature_metadata.iloc[aaa]['term'] for aaa in sorted_pos_rev[:4]]
+            low_terms = [term_exp.feature_metadata.iloc[aaa]['term'] for aaa in sorted_pos[:4]]
+            label = '(-) '
+            for idx2, ctop_term in enumerate(low_terms):
+                if pca.components_[caxis][sorted_pos[idx2]] > 0:
+                    continue
+                label += '%s, ' % ctop_term
+            label += '%f: ' % pca.explained_variance_ratio_[caxis]
+            for idx2, ctop_term in enumerate(top_terms):
+                if pca.components_[caxis][sorted_pos_rev[idx2]] < 0:
+                    continue
+                label += '%s, ' % ctop_term
+            label += ' (+)'
+            axis_coords.append(label)
+
+        plt.xlabel(axis_coords[pc1])
+        plt.ylabel(axis_coords[pc2])
+
+        ax.axes.xaxis.set_ticks([])
+        ax.axes.yaxis.set_ticks([])
+
+        plt.legend(handles=legend_h)
+
+        # attach the mouse hover info
+        # NOTE: this only works with %matplotlib widget
+        sc = mpl.collections.PathCollection(paths)
+        if show_field is not None:
+            annot = ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
+                                bbox=dict(boxstyle="round", fc="w"),
+                                arrowprops=dict(arrowstyle="->"))
+            annot.set_visible(False)
+
+            def update_annot(ind):
+                names = exp.sample_metadata[show_field].values
+                pos = sc.get_offsets()[ind["ind"][0]]
+                annot.xy = pos
+                text = "{}".format(" ".join([names[n] for n in ind["ind"]]))
+                annot.set_text(text)
+                annot.get_bbox_patch().set_facecolor('lightgrey')
+                # annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
+                annot.get_bbox_patch().set_alpha(0.9)
+
+            def hover(event):
+                vis = annot.get_visible()
+                if event.inaxes == ax:
+                    cont, ind = sc.contains(event)
+                    if cont:
+                        update_annot(ind)
+                        annot.set_visible(True)
+                        fig.canvas.draw_idle()
+                    else:
+                        if vis:
+                            annot.set_visible(False)
+                            fig.canvas.draw_idle()
+
+            fig.canvas.mpl_connect("motion_notify_event", hover)
+            plt.show()
+
+        return fig, coords, pca, term_exp, axis_coords
+
 
 def _get_color(word, font_size, position, orientation, font_path, random_state, fscore, recall, precision, term_count):
     '''Get the color for a wordcloud term based on the term_count and higher/lower
@@ -2062,231 +2289,3 @@ def _get_color(word, font_size, position, orientation, font_path, random_state, 
     green = format(rgba[1], '02x')
     blue = format(rgba[2], '02x')
     return '#%s%s%s' % (red, green, blue)
-
-
-def plot_term_pcoa(exp, field=None, pc1=0, pc2=1, term_type='term', freq_weight='linear', normalize_terms=False, ignore_exp=True, max_id=None, n_components=10, show_field='_sample_id', size_field=None, size_scale=10, marker_field=None, marker_order=['o', 'v', 's', '*', 'p', 'D', '+', 'x', '.', 'X'], edgecolors='black', cmap=None, permute_samples=True, **kwargs):
-    '''
-    Parameters
-    ----------
-    exp : calour.Experiment
-        The experiment to compare the features to
-    field: str or None, optional
-        the files to color the samples by (can be numeric or categorical)
-    term_type : str or None (optional)
-        The type of annotation data to test for enrichment
-        options are:
-        'term' - ontology terms associated with each feature.
-        'parentterm' - ontology terms including parent terms associated with each feature.
-        'annotation' - the full annotation strings associated with each feature
-        'combined' - combine 'term' and 'annotation'
-        'fscore' - the fscore for each term (recall/precision)
-    freq_weight : str (optional)
-        How to incorporate the frequency of each feature (in a sample) into the term count for the sample. options:
-            'linear' : use the frequency
-            'log' : use the log2 of the frequency
-            'binary' : use the presence/absence of the feature
-            'rank' : use the rank of each feature across the same feature on all samples
-            'rank2' : use the rank of each feature within each sample (independent on other samples)
-    normalize_terms: bool, optional
-        if True, normalize each term score (not recommended)
-    ignore_exp: list of int or None or True, optional
-        List of experiments to ignore in the analysis
-        True to ignore annotations from the current experiment
-        None (default) to use annotations from all experiments including the current one
-    max_id: int or None, optional
-        the maximal dbBact annotation id to use for the terms
-    n_components: int, optional
-        the number of PCA dimensions to calculate
-    show_field: str or None, optional
-        if str, name of the field value to show on mouse hover (works only with %matploblib widget enabled)
-        None - disable the mouse hover
-    size_field: str or None, optional
-        the field to use for the sample sizes (must be numeric)
-    size_scale: float, optional
-        the scaling to apply to each sample marker size
-    marker_field: str or None, optional
-        the field to use for the marker shapes. marker shapes are taken from marker_order parameter
-    marker_order: list of str, optional
-        the marker shapes for the different marker_field values. see matplotlib marker shapes
-    edgecolors: str or None, optional
-        the marker edge color. None to not plot marker edges
-    cmap: str or None, optional
-        if None, automaticallly choose the colormap based on the numeric/categorical nature of the field parameter
-    permute_samples: bool, optional
-        if True, randomly permute the sample plotting order (to remove order-dependent artifacts)
-    **kwargs:
-        passed to dbbact-calour.dbbact.sample_term_scores(), Include:
-            use_precision: bool, optional (default is True)
-                if True, return precision values (i.e. fraction of annotations for each feature contatining each term) as the scores (float range 0-1)
-                if False, return total number of annotations containing the term for each feature (positive integer)
-            in_term_score : int (optional)
-                The minimal score of a term in a feature in order to include in output (otherwise it is set to 0).
-                Prior to the matrix multiplication, on the feature X term matrix, for each feature and term, the corresponding value in the matrix is set to 0 if score<min_term_score
-                This is used prior to per-term normalization in order to reduce the effect of spurious terms (appearing in a small number of annotations for a given feature)
-            Use_term_pairs: bool, optional
-                True to get all term pair annotations (i.e. human+feces etc.)
-
-    Returns
-    -------
-    fig: matplotlib.figure
-        the figure containing the pcoa
-    coords:
-    pca:
-    term_exp: calour.Experiment
-        containing the original experiment samples as samples, features are dbbact terms, and the sample/term data is the term score for the sample
-    axis_coords:
-
-    '''
-    from sklearn.decomposition import PCA
-
-    logger.info('Calculating per-ASV term scores')
-    db = ca.database._get_database_class('dbbact')
-    term_exp = db.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, freq_weight=freq_weight, max_id=max_id, **kwargs)
-    # get rid of features not present in any sample (if we used min_term_score)
-    term_exp = term_exp.filter_sum_abundance(0, strict=True)
-
-    if normalize_terms:
-        term_exp = term_exp.normalize(1, axis='f')
-
-    term_exp.data = np.sqrt(term_exp.data)
-    term_exp.sparse = False
-    # term_exp.data = scipy.stats.rankdata(term_exp.data, axis=0)
-
-    pca = PCA(n_components=n_components)
-    coords = pca.fit_transform(term_exp.get_data(sparse=False))
-
-    exp = exp.copy()
-    exp.sample_metadata['_calour_pc1'] = coords[:, pc1]
-    exp.sample_metadata['_calour_pc2'] = coords[:, pc2]
-
-    logger.info('plotting')
-    fig = plt.figure(figsize=[10, 10])
-    ax = plt.gca()
-
-    # set up the per-sample sizes in _calour_pcoa_sizes
-    vals = []
-    if size_field is None:
-        sizes = size_scale ** 2
-    else:
-        sizes = (size_scale * exp.sample_metadata[size_field]) ** 2
-    exp.sample_metadata['_calour_pcoa_sizes'] = sizes
-
-    legend_h = []
-
-    # set up the per-sample colors in _calour_pcoa_colors and the colormap
-    if field is None:
-        plot_colors = 'b'
-        if cmap is None:
-            cmap = 'hsv'
-    else:
-        # if it is numeric, select appropriate colormap and normalizer
-        field_vals = exp.sample_metadata[field]
-        if pd.to_numeric(field_vals, errors='coerce').notnull().all():
-            plot_colors = field_vals.values
-            norm = mpl.colors.Normalize(vmin=np.min(field_vals), vmax=np.max(field_vals))
-            if cmap is None:
-                cmap = 'PuBu_r'
-        else:
-            # not numeric - so discrete values
-            if cmap is None:
-                cmap = 'hsv'
-            vals = field_vals.unique()
-            norm = mpl.colors.Normalize(vmin=0, vmax=len(vals))
-            plot_colors = exp.sample_metadata[field].astype('category').cat.codes
-            ccmap = mpl.cm.get_cmap(cmap)
-            for idx, clab in enumerate(exp.sample_metadata[field].astype('category').cat.categories):
-                    ch = mpl.lines.Line2D([], [], color=ccmap(norm(idx)), marker='o', linestyle='None', markersize=np.max(exp.sample_metadata['_calour_pcoa_sizes']), label=clab)
-                    legend_h.append(ch)
-    exp.sample_metadata['_calour_pcoa_colors'] = plot_colors
-
-    # set up the per-sample markers in _calour_pcoa_markers
-    if marker_field is None:
-        markers = '.'
-    else:
-        marker_ids = exp.sample_metadata[marker_field].astype('category').cat.codes
-        markers = [marker_order[x % len(marker_order)] for x in marker_ids]
-        for idx, clab in enumerate(exp.sample_metadata[marker_field].astype('category').cat.categories):
-                ch = mpl.lines.Line2D([], [], color='white', marker=marker_order[idx % len(marker_order)], linestyle='None', markersize=size_scale, label=clab, markeredgecolor='black')
-                legend_h.append(ch)
-    exp.sample_metadata['_calour_pcoa_markers'] = markers
-
-    # randomly permute the samples so we don't get artifact by sample order in dense data where last ones are observed more since on top
-    if permute_samples:
-        exp = exp.reorder(np.random.permutation(np.arange(len(exp.sample_metadata))), axis='s')
-
-    # the scatter plot (we iterate to keep the random order)
-    paths = []
-    for csamp_id, crow in exp.sample_metadata.iterrows():
-        sc = plt.scatter(crow['_calour_pc1'], crow['_calour_pc2'], c=crow['_calour_pcoa_colors'], marker=crow['_calour_pcoa_markers'], s=crow['_calour_pcoa_sizes'], norm=norm, cmap=cmap, edgecolors=edgecolors)
-        paths.append(sc.get_paths())
-
-    # create the legend
-    # colors
-
-    codes = dict(enumerate(exp.sample_metadata[field].astype('category').cat.categories))
-    plt.legend(handles=sc.legend_elements()[0], labels=[codes[x] for x in range(len(codes))])
-
-    # set the axis titles
-    axis_coords = []
-    for caxis in range(n_components):
-        sorted_pos_rev = np.argsort(pca.components_[caxis])[::-1]
-        sorted_pos = np.argsort(pca.components_[caxis])
-        top_terms = [term_exp.feature_metadata.iloc[aaa]['term'] for aaa in sorted_pos_rev[:4]]
-        low_terms = [term_exp.feature_metadata.iloc[aaa]['term'] for aaa in sorted_pos[:4]]
-        label = '(-) '
-        for idx2, ctop_term in enumerate(low_terms):
-            if pca.components_[caxis][sorted_pos[idx2]] > 0:
-                continue
-            label += '%s, ' % ctop_term
-        label += '%f: ' % pca.explained_variance_ratio_[caxis]
-        for idx2, ctop_term in enumerate(top_terms):
-            if pca.components_[caxis][sorted_pos_rev[idx2]] < 0:
-                continue
-            label += '%s, ' % ctop_term
-        label += ' (+)'
-        axis_coords.append(label)
-
-    plt.xlabel(axis_coords[pc1])
-    plt.ylabel(axis_coords[pc2])
-
-    ax.axes.xaxis.set_ticks([])
-    ax.axes.yaxis.set_ticks([])
-
-    plt.legend(handles=legend_h)
-
-    # attach the mouse hover info
-    # NOTE: this only works with %matplotlib widget
-    sc = mpl.collections.PathCollection(paths)
-    if show_field is not None:
-        annot = ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
-                            bbox=dict(boxstyle="round", fc="w"),
-                            arrowprops=dict(arrowstyle="->"))
-        annot.set_visible(False)
-
-        def update_annot(ind):
-            names = exp.sample_metadata[show_field].values
-            pos = sc.get_offsets()[ind["ind"][0]]
-            annot.xy = pos
-            text = "{}".format(" ".join([names[n] for n in ind["ind"]]))
-            annot.set_text(text)
-            annot.get_bbox_patch().set_facecolor('lightgrey')
-            # annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
-            annot.get_bbox_patch().set_alpha(0.9)
-
-        def hover(event):
-            vis = annot.get_visible()
-            if event.inaxes == ax:
-                cont, ind = sc.contains(event)
-                if cont:
-                    update_annot(ind)
-                    annot.set_visible(True)
-                    fig.canvas.draw_idle()
-                else:
-                    if vis:
-                        annot.set_visible(False)
-                        fig.canvas.draw_idle()
-
-        fig.canvas.mpl_connect("motion_notify_event", hover)
-        plt.show()
-
-    return fig, coords, pca, term_exp, axis_coords
