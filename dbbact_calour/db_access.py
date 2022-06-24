@@ -1360,7 +1360,7 @@ class DBAccess():
                 nv = [x for x in v if x in ok_annotations]
                 seq_annotations[k] = nv
 
-        # filter keeping only annotations containing focus_terms (if not None)
+        # filter keeping only annotations not containing the focus_negate terms (if not None)
         if focus_negate is not None:
             logger.debug('filtering annotations for %d focus_negate terms.' % len(focus_negate))
             seq_annotations = seq_annotations.copy()
@@ -1893,12 +1893,54 @@ class DBAccess():
             if len(foundit) < len(terms):
                 continue
             # get the sequences for the annotation
-            seqs = self.get_annotation_sequences(cannotation['annotationid'])
+            # we try a few times as the server may be bogged down:
+            num_tries = 3
+            while num_tries > 0:
+                try:
+                    seqs = self.get_annotation_sequences(cannotation['annotationid'])
+                    num_tries = 0
+                except Exception as err:
+                    num_tries -= 1
+                    if num_tries <= 0:
+                        raise ValueError('Failed to get annotation %d: %s' % (cannotation, err))
             for cseq in seqs:
                 feature_num[cseq] += 1
         if max_id is not None:
             logger.info('ignored %d annotations' % num_ignored_annotations)
         return feature_num
+
+    def get_db_term_features2(self, terms, ignore_exp=(), max_id=None, get_children=True):
+        '''Get all the features associated with a term in the database
+        NEED TO WRITE USING ontology/get_term_sequences api hook
+
+
+        Parameters
+        ----------
+        terms : str or list of str
+            The term to look for in the database. if list of str, look for annotations containing all terms
+        ignore_exp: list of int, optional
+            list of experiment ids to ignore when looking for the features
+        max_id: int or None, optional
+            if not None, use only annotations up to annotatuin id max_id (for reproducibility after dbBact gets more annotations)
+        get_children: bool, optional
+            if True, get also annotations for the term child terms
+
+        Returns
+        -------
+        dict of {feature: num} {str: int}. Key is feature (sequence), value is number of annotations containing this feature for this term.
+        '''
+        raise ValueError('Not implemented yet')
+        rdata = {}
+        # convert to list if single term
+        if isinstance(terms, str):
+            terms = [terms]
+
+        rdata['term'] = terms
+        res = self._get('ontology/get_annotations', rdata, param_json=False)
+        if res.status_code != 200:
+            logger.warn('error getting annotations for term %s' % terms)
+            return []
+        return []
 
     def get_sequences_ids(self, sequences, no_shorter=False, no_longer=False, use_sequence_translator=True):
         '''Get the dbbact IDs for a list of ACGT sequences

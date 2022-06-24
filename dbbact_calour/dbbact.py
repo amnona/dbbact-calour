@@ -1037,7 +1037,7 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), max_size=None, ignore_exp=[], max_id=None, use_exact=True):
+    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, use_exact=True, label_kwargs=None):
         '''Plot a venn diagram for all sequences appearing in any annotation containing the term, and intersect with both groups of bacteria
 
         Parameters
@@ -1051,6 +1051,8 @@ class DBBact(Database):
             If None, use groups from exp
         set_colors: tuple of (str, str, str), optional
             The colors for group1, group2, term circles
+        colors_alpha: float [0,1], optional
+            the alpha transparency for the circles
         max_size: int or None, optional
             if not None, clip term circle size to max_size.
             Used to make cases where term has lots of sequences nicer.
@@ -1065,6 +1067,8 @@ class DBBact(Database):
             True (default) to search only for annotations exactly matching the query sequence (region and length)
             False to search including sequences from other regions (using SILVA based sequence translator) and also shorter/longer sequences.
             NOTE: if use_exact=False, the venn diagramm will include more sequences than the query sequence
+        label_kwargs: dict or None, optional
+            parameters to pass to each subset number label (e.g. to pass to matplotlib.Text.set() )
         '''
         import matplotlib.pyplot as plt
         try:
@@ -1174,7 +1178,7 @@ class DBBact(Database):
         f = plt.figure()
         termstr = '+'.join(terms)
         # venn3([gg1, gg2, anno_group], set_labels=(group1_name, group2_name, 'annotation'), set_colors=['mediumblue', 'r', 'g'])
-        vd = venn3(vvals, set_labels=(group1_name, group2_name, termstr), set_colors=set_colors)
+        vd = venn3(vvals, set_labels=(group1_name, group2_name, termstr), set_colors=set_colors, alpha=colors_alpha)
 
         # now update the dbbact sequences number of sequences if max_size was used
         if max_used is not None:
@@ -1182,7 +1186,17 @@ class DBBact(Database):
             logger.debug('Updating dbbact seqs circle text from %d to %d' % (max_used, max_size))
             dbtext.set_text(str(max_used))
 
-        plt.title('term overlaps for %s' % termstr)
+        if label_kwargs is not None:
+            for clab in vd.subset_labels:
+                if clab is None:
+                    continue
+                clab.set(**label_kwargs)
+
+        for idx, clab in enumerate(vd.set_labels):
+            clab.set_bbox(dict(facecolor=set_colors[idx], alpha=colors_alpha, edgecolor=set_colors[idx]))
+            clab.set(color='w', fontweight='bold')
+
+        plt.title('Sequences associated with ' + r'$\bf{' + termstr.replace(' ', ' \\ ') + '}$')
         return f
 
     def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0):
