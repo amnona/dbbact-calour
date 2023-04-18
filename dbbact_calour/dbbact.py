@@ -1313,7 +1313,7 @@ class DBBact(Database):
             all_figures.append(f)
         return all_figures
 
-    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='log', alpha=0.1, use_term_pairs=False, max_id=None):
+    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='rank', alpha=0.1, use_term_pairs=False, max_id=None):
         '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
