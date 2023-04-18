@@ -540,7 +540,8 @@ class DBBact(Database):
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
         min_appearances : int (optional)
-            The minimal number of times a term appears in order to include in output list.
+            The minimal number of experiments a term is enriched in, in order to include in output.
+            NOTE: can slow down computation! use with nun_results_needed to speed up.
         fdr_method : str (optional)
             The FDR method used for detecting enriched terms (permutation test). options are:
             'dsfdr' (default): use the discrete FDR correction
@@ -554,8 +555,23 @@ class DBBact(Database):
             int to specify the random seed for numpy.random.
         use_term_pairs: bool, optional
             True to also test enrichment in pairs of terms (i.e. homo sapiens+feces, etc.)
+        transform_type: str, optional
+            the data trasformation to use before calculating the dsFDR. For options see dsfdr.dsfdr()
+        method: str or None, optional
+            'card_mean': use a null model keeping the number of annotations per each bacteria (useful for comparison to background sequences). NOTE: use transfrom_type=None for this method.
+            otherwise, use as method for dsfdr.dsfdr() (i.e. 'meandiff')
+        min_exps: int, optional
+            the minimal number of experiments a term appears in in order to include in results (default = 1 so all are shown)
+        add_single_exp_warning: bool, optional
+            True to add a warning to terms present in one experiment, False to not add this warning
+        num_results_needed: int, optional
+            if min_appearances supplied, use this to speed up calculation by looking at terms in sorted (effect size) order until num_results_needed are met at each end
+            0 to calculate for all
+            NOTE: using this keeps only num_results_needed significant terms!
         focus_terms: list of str or None, optional
             if not None, use only annotations containing all the terms in focus_terms
+        focus_negate: list of str or None, optional
+            if not None, throw away annotations with any of the focus_negate terms
 
         Returns
         -------
@@ -1037,13 +1053,14 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, use_exact=True, label_kwargs=None):
+    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, focus_terms=None, use_exact=True, label_kwargs=None):
         '''Plot a venn diagram for all sequences appearing in any annotation containing the term, and intersect with both groups of bacteria
 
         Parameters
         ----------
         terms: str or list of str
-            the terms to test the overlap for. if more than one term supplied (list of str), look for all otus in the overlap
+            the terms to test the overlap for. if more than one term supplied (list of str), look for all otus in the overlap.
+            If the term starts with '-', examine the term only in "lower in" annotations
         exp: calour.Experiment or None
             the experiment containing the bacteria groups or None to use the bacteria_groups parameter
         bacteria_groups: (list of str, list of str) or None, optional
@@ -1063,6 +1080,8 @@ class DBBact(Database):
             None (default) to use annotations from all experiments including the current one
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
+        focus_terms: list of str or None, optional
+            if not None, look only at annotations including all the focus terms
         use_exact: bool, optional
             True (default) to search only for annotations exactly matching the query sequence (region and length)
             False to search including sequences from other regions (using SILVA based sequence translator) and also shorter/longer sequences.
@@ -1139,17 +1158,17 @@ class DBBact(Database):
         terms = _to_list(terms)
         termids = None
 
-        # TODO: fix the lower in test
-        # remove the "-" for the terms
-        new_terms = []
-        for cterm in terms:
-            if cterm[0] == '-':
-                cterm = cterm[1:]
-            new_terms.append(cterm)
-        terms = new_terms
+        # # TODO: fix the lower in test
+        # # remove the "-" for the terms
+        # new_terms = []
+        # for cterm in terms:
+        #     if cterm[0] == '-':
+        #         cterm = cterm[1:]
+        #     new_terms.append(cterm)
+        # terms = new_terms
 
         # get the sequence ids that have these terms
-        termids = set(self.db.get_db_term_features(terms, ignore_exp=ignore_exp, max_id=max_id))
+        termids = set(self.db.get_db_term_features(terms, ignore_exp=ignore_exp, max_id=max_id, focus_terms=focus_terms))
 
         og1 = len(termids.intersection(g1ids))
         og2 = len(termids.intersection(g2ids))

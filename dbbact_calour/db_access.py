@@ -1840,15 +1840,18 @@ class DBAccess():
                 logger.warn('failed for term %s' % cterm)
         return term_dist
 
-    def get_db_term_features(self, terms, ignore_exp=(), max_id=None):
+    def get_db_term_features(self, terms, ignore_exp=(), max_id=None, focus_terms=None):
         '''Get all the features associated with a term in the database
 
         Parameters
         ----------
         terms : str or list of str
             The term to look for in the database. if list of str, look for annotations containing all terms
+            if the term starts with '-', get only the annotations including the term in the LOWER IN terms
         ignore_exp: list of int, optional
             list of experiment ids to ignore when looking for the features
+        focus_terms: list of str or None, optional
+            if not None, look only at annotations including all the focus terms
 
         Returns
         -------
@@ -1858,6 +1861,20 @@ class DBAccess():
         # convert to list if single term
         if isinstance(terms, str):
             terms = [terms]
+
+        # remove the "-" for the terms
+        # also create a set of all the terms starting with '-'
+        new_terms = []
+        negative_terms = set()
+        for cterm in terms:
+            if cterm[0] == '-':
+                cterm = cterm[1:]
+                negative_terms.add(cterm)
+            new_terms.append(cterm)
+        terms = new_terms
+
+        if focus_terms is not None:
+            focus_terms = set(focus_terms)
 
         rdata['term'] = terms
         res = self._get('ontology/get_annotations', rdata, param_json=False)
@@ -1872,6 +1889,9 @@ class DBAccess():
         terms_set = set(terms)
         feature_num = defaultdict(int)
         num_ignored_annotations = 0
+        num_bad_context_annotations = 0
+        num_no_focus = 0
+        num_used_annotations = 0
         for cannotation in annotations:
             # if annotation is from an experiment we are ignoring, skip it
             if cannotation['expid'] in ignore_exp:
@@ -1880,18 +1900,35 @@ class DBAccess():
                 if cannotation['annotationid'] > max_id:
                     num_ignored_annotations += 1
                     continue
+            if focus_terms is not None:
+                found_focus_terms = set()
+                for cdetail in cannotation['details']:
+                    if cdetail[1] in focus_terms:
+                        found_focus_terms.add(cdetail[1])
+                if len(focus_terms) != len(found_focus_terms):
+                    logger.debug('annotation %d does not contain all the focus terms. skipping' % cannotation['annotationid'])
+                    num_no_focus += 1
+                    continue
             foundit = set()
             for cdetail in cannotation['details']:
                 if cdetail[1] not in terms_set:
                     continue
-                if cdetail[0] == 'low':
-                    logger.info('annotation %d is low' % cannotation['annotationid'])
-                    continue
+                if cdetail[1] in negative_terms:
+                    if cdetail[0] != 'low':
+                        logger.debug('annotation %d is not low but term %s starts with -' % (cannotation['annotationid'], cdetail[1]))
+                        num_bad_context_annotations += 1
+                        continue
+                else:
+                    if cdetail[0] == 'low':
+                        logger.debug('annotation %d is low but term %s does not start with -' % (cannotation['annotationid'], cdetail[1]))
+                        num_bad_context_annotations += 1
+                        continue
                 foundit.add(cdetail[1])
                 if len(foundit) >= len(terms):
                     break
             if len(foundit) < len(terms):
                 continue
+            num_used_annotations += 1
             # get the sequences for the annotation
             # we try a few times as the server may be bogged down:
             num_tries = 3
@@ -1905,8 +1942,9 @@ class DBAccess():
                         raise ValueError('Failed to get annotation %d: %s' % (cannotation, err))
             for cseq in seqs:
                 feature_num[cseq] += 1
+        logger.info('found %d annotations (%d annotations without focus terms, %d annotations with term in wrong context)' % (num_used_annotations, num_no_focus, num_bad_context_annotations))
         if max_id is not None:
-            logger.info('ignored %d annotations' % num_ignored_annotations)
+            logger.info('ignored %d annotations above max_id' % num_ignored_annotations)
         return feature_num
 
     def get_db_term_features2(self, terms, ignore_exp=(), max_id=None, get_children=True):
