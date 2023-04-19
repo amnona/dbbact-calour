@@ -1313,7 +1313,7 @@ class DBBact(Database):
             all_figures.append(f)
         return all_figures
 
-    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='rank', alpha=0.1, use_term_pairs=False, max_id=None):
+    def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='rank', alpha=0.1, use_term_pairs=False, max_id=None, random_seed=None):
         '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
@@ -1365,6 +1365,8 @@ class DBBact(Database):
             True to get all term pair annotations (i.e. human+feces etc.)
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
+        random_seed: int or None, optional
+            if not None, use this random seed for the permutation test (for analysis replicability)
 
         Returns
         -------
@@ -1390,9 +1392,11 @@ class DBBact(Database):
         #     group: int the group (1/2) to which the feature belongs
         #     sequence: str
         '''
+        # create a new experiment with the per-sample term scores as the data (terms are features, samples are samples)
         newexp = self.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, min_appearances=min_appearances, score_method=score_method, freq_weight=freq_weight, use_term_pairs=use_term_pairs, max_id=max_id, axis='s')
+
         # get the differentially abundant terms between the two sample groups
-        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha)
+        dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha, random_seed=random_seed)
         return dd
 
     def sample_term_scores(self, exp, term_type='term', ignore_exp=None, min_term_score=0, score_method='all_mean', freq_weight='log', use_term_pairs=False, max_id=None, axis='s', min_appearances=None, use_precision=True):
