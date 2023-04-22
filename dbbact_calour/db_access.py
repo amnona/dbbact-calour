@@ -1769,7 +1769,7 @@ class DBAccess():
                     cdat = {'annotationid': cannotation['annotationid'], 'annotation_type': cannotation['annotationtype'], 'expid': cannotation['expid'], 'detail_type': ctype}
                     cdat['annotation'] = self.get_annotation_string(cannotation)
                     cdf = pd.DataFrame([cdat], index=[cannotation['annotationid']])
-                    term_annotations = term_annotations.append(cdf)
+                    term_annotations = pd.concat([term_annotations, cdf])
                     break
         logger.debug('found %d annotations with term %s' % (len(term_annotations), term))
         term_mat = np.zeros([len(features), len(term_annotations)])
