@@ -1053,7 +1053,7 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, focus_terms=None, use_exact=True, label_kwargs=None):
+    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, focus_terms=None, use_exact=True, label_kwargs=None, show_group_names=True):
         '''Plot a venn diagram for all sequences appearing in any annotation containing the term, and intersect with both groups of bacteria
 
         Parameters
@@ -1088,6 +1088,8 @@ class DBBact(Database):
             NOTE: if use_exact=False, the venn diagramm will include more sequences than the query sequence
         label_kwargs: dict or None, optional
             parameters to pass to each subset number label (e.g. to pass to matplotlib.Text.set() )
+        show_group_names: bool, optional
+            True (default) to show the group names in the venn diagram
         '''
         import matplotlib.pyplot as plt
         try:
@@ -1183,6 +1185,14 @@ class DBBact(Database):
         vvals['011'] = og2
         vvals['111'] = oga
 
+        termstr = '+'.join(terms)
+        if not show_group_names:
+            group1_name = ''
+            group2_name = ''
+            group_term_name = ''
+        else:
+            group_term_name = termstr
+
         max_used = None
         if max_size is not None:
             if vvals['001'] > max_size:
@@ -1195,9 +1205,8 @@ class DBBact(Database):
         #         vvals[k] = np.log2(v)
 
         f = plt.figure()
-        termstr = '+'.join(terms)
         # venn3([gg1, gg2, anno_group], set_labels=(group1_name, group2_name, 'annotation'), set_colors=['mediumblue', 'r', 'g'])
-        vd = venn3(vvals, set_labels=(group1_name, group2_name, termstr), set_colors=set_colors, alpha=colors_alpha)
+        vd = venn3(vvals, set_labels=(group1_name, group2_name, group_term_name), set_colors=set_colors, alpha=colors_alpha)
 
         # now update the dbbact sequences number of sequences if max_size was used
         if max_used is not None:
