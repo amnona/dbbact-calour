@@ -814,10 +814,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
         exp = self.cexp
         method_str = 'NA'
         if new_type.startswith('diffexp'):
-            print('lala')
             # get the last diffexp event
             for cevent in exp._call_history[::-1]:
-                print(cevent)
                 if cevent.startswith('diff_abundance'):
                     # look if we have the transform in the method (otherwise use the default which is rank-mean)
                     method_str = 'per feature ranking followed by two group mean comparison'
