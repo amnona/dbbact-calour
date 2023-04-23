@@ -810,7 +810,6 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 'dominant': 'mean freq > 0.01'
                 'other': 'NA'
         '''
-        print('batata:', new_type)
         exp = self.cexp
         method_str = 'NA'
         if new_type.startswith('diffexp'):
