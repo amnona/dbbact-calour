@@ -100,14 +100,12 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
     res = ui.exec_()
     if res == QtWidgets.QDialog.Accepted:
         description = str(ui.bdescription.text())
-        # TODO: need to get primer region!!!!
         primerid = ui.primerid
-        # primerid = 'V4'
         method = str(ui.bmethod.text())
         if method == '':
             method = 'na'
-        # TODO: fix submitter name
-        submittername = 'Amnon Amir'
+        # TODO: submittername is ignored. can we remove?
+        submittername = 'NA'
         annotations = []
 
         for citem in qtlistiteritems(ui.blistall):
@@ -575,6 +573,8 @@ class DBAnnotateSave(QtWidgets.QDialog):
             if expmd5 in history:
                 logger.debug('Filling annotation details from history')
                 self.fill_from_annotation(history[expmd5], onlyall=True)
+            else:        
+                self._autofill_method('diffexp')
         else:
             logger.debug('Filling annotation details from supplied annotation')
             self.fill_from_annotation(prefill_annotation, onlyall=False)
@@ -798,6 +798,53 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 self.bisatype.setCurrentIndex(ctypeidx)
             self.radiotoggle()
 
+    def _autofill_method(self, new_type):
+        '''Autofill the method based on the exp history and the current annotation type
+        
+        Parameters
+        ----------
+            new_type : The new annotation type. options:
+                'diffexp': differential expression (so select the test from the history (i.e. 'rank-mean', 'binary', 'log-mean'))
+                'contamination': 'manual observation'
+                'common': 'prevalence > 0.5'
+                'dominant': 'mean freq > 0.01'
+                'other': 'NA'
+        '''
+        print('batata:', new_type)
+        exp = self.cexp
+        method_str = 'NA'
+        if new_type.startswith('diffexp'):
+            print('lala')
+            # get the last diffexp event
+            for cevent in exp._call_history[::-1]:
+                print(cevent)
+                if cevent.startswith('diff_abundance'):
+                    # look if we have the transform in the method (otherwise use the default which is rank-mean)
+                    method_str = 'per feature ranking followed by two group mean comparison'
+                    if 'rankdata' in cevent:
+                        method_str = 'per feature ranking followed by two group mean comparison'
+                    elif 'binarydata' in cevent:
+                        method_str = 'per feature binary transform followed by two group mean comparison'
+                    elif 'log2data' in cevent:
+                        method_str = 'per feature log transform followed by two group mean comparison'
+                    elif 'normdata' in cevent:
+                        method_str = 'per feature two group mean comparison'
+                    break
+                if cevent.startswith('correlation'):
+                    method_str = 'spearman correlation'
+                    if 'pearson' in cevent:
+                        method_str = 'pearson correlation'
+                    break
+        elif new_type.startswith('contaminant'):
+            method_str = 'manual observation'
+        elif new_type.startswith('common'):
+            method_str = 'prevalence > 0.5'
+        elif new_type.startswith('dominant'):
+            method_str = 'mean freq > 0.01'
+        elif new_type.startswith('other'):
+            method_str = 'NA'
+        self.bmethod.setText(method_str)
+
     def radiotoggle(self):
         if self.bisa.isChecked():
             if 'negatively associated' in self.bisatype.currentText().lower():
@@ -808,9 +855,12 @@ class DBAnnotateSave(QtWidgets.QDialog):
                 self.bhigh.setDisabled(False)
             else:
                 self.bhigh.setDisabled(True)
+            self._autofill_method(self.bisatype.currentText().lower())
         if self.bdiffpres.isChecked():
             self.blow.setEnabled(True)
             self.bhigh.setEnabled(True)
+            self._autofill_method('diffexp')
+            # Set the method to the appropriate default (based on the history)
 
     def isatypechanged(self):
         """
@@ -818,6 +868,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         """
         self.bisa.setChecked(True)
         self.radiotoggle()
+        self._autofill_method(self.bisatype.currentText().lower())
 
     def select_primers(self, dbclass=None):
         primer_info = dbclass.db.get_primers()
