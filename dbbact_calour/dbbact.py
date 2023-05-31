@@ -272,8 +272,9 @@ class DBBact(Database):
         res = dbannotation.annotate_bacteria_gui(self, features, exp)
         return res
 
-    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), max_id=None, **kwargs):
-        '''Get dict of terms scores per feature
+    def get_feature_terms(self, features, exp=None, term_type=None, ignore_exp=None, term_method=('single'), max_id=None, get_contaminant=None, **kwargs):
+        '''Get dict of terms scores per feature.
+        Used for the dbBact database.add_terms_to_features() function
 
         Parameters
         ----------
@@ -288,6 +289,8 @@ class DBBact(Database):
             'terms': the ontology terms without parent terms (with '-' attached to negative freq. terms)
             'parentterms': the ontology terms including all parent terms (with '-' attached to negative freq. terms)
             'contamination': get if bacteria is contaminant or not
+            'recall': get the recall (sensitivity) for each term (fraction of term annotation containing the sequence)
+            'precision': get the precision for each term (fraction of sequence annotations containing the term)
             'fscore': get the fscore (combination of recall and precision) for each term
         ignore_exp : list of int or None (optional)
             the list of experimentids to ignore (don't take info from them)
@@ -297,6 +300,9 @@ class DBBact(Database):
                 'pairs': get the term pairs for each feature (i.e. 'feces+homo sapiens', etc.)
         max_id: int or None, optional
             if not None, limit results to annotation ids <= max_id
+        get_contaminants: int or None, optional
+            if not None, add 'contaminant' term to all features that are observed in at least get_contaminants annotations as contaminantion
+            (instead of the other terms)
         kwargs:
             Parameters to pass to db_access.get_seq_list_fast_annotations. can include:
             get_taxonomy=False, get_parents=False, get_term_info=True
@@ -352,6 +358,14 @@ class DBBact(Database):
                 term_scores[cseq] = defaultdict(float)
                 newdesc = []
                 annotation_terms = []
+                if get_contaminant is not None:
+                    num_contaminants = 0
+                    for cannotation in annotations_list:
+                        if cannotation['annotationtype']=='contaminant':
+                            num_contaminants += 1
+                    if num_contaminants >= get_contaminant:
+                        annotation_terms = ['contaminant']
+                        break
                 for cannotation in annotations_list:
                     if ignore_exp is not None:
                         annotationexp = annotations[cannotation]['expid']
@@ -383,9 +397,20 @@ class DBBact(Database):
                     use_score = recall
                 elif term_type == 'precision':
                     use_score = precision
+
+                if get_contaminant is not None:
+                    num_contaminants = 0
+                    for cannotation in annotations_list:
+                        if annotations[str(cannotation)]['annotationtype']=='contamination':
+                            num_contaminants += 1
+                    if num_contaminants >= get_contaminant:
+                        use_score['contaminant'] = num_contaminants
+                        # continue
+
                 if len(use_score) == 0:
                     new_annotations[cseq] = ['NA']
                     continue
+
                 sorted_score = sorted(use_score.items(), key=lambda x: x[1], reverse=True)
                 new_annotations[cseq] = [sorted_score[0][0]]
                 term_scores[cseq] = use_score
@@ -856,7 +881,7 @@ class DBBact(Database):
         return newexp
 
     def show_term_details_diff(self, term, exp, **kwargs):
-        '''Plot all the annotations in a diff_abundance result exp for a given term, dividung according to the two groups
+        '''Plot all the annotations in a diff_abundance result exp for a given term, dividing according to the two groups
 
         Parameters
         ----------
@@ -1409,7 +1434,7 @@ class DBBact(Database):
         return dd
 
     def sample_term_scores(self, exp, term_type='term', ignore_exp=None, min_term_score=0, score_method='all_mean', freq_weight='log', use_term_pairs=False, max_id=None, axis='s', min_appearances=None, use_precision=True):
-        '''Get the list of enriched terms for all bacteria between two groups using frequencies from the Experiment.data table.
+        '''Get the matrix of term scores for each sample in the experiment.
 
         It is equivalent to multiplying the (freq_weight transformed) feature X sample matrix by the database derived term X feature matrix
         (where the numbers are how strong is the term associated with the feature based on database annotations using score_method).
@@ -1799,6 +1824,14 @@ class DBBact(Database):
         if freq_weighted:
             raise ValueError('freq weighting not supported yet')
             new_score = defaultdict(float)
+
+        # delete entries with emtpy key in scores
+        new_scores = {}
+        for ckey, cval in score.items():
+            if ckey == '':
+                continue
+            new_scores[ckey] = cval
+        score = new_scores
 
         # normalize the fractions to a scale max=1
         new_scores = {}

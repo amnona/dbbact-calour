@@ -166,19 +166,17 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 	-------
 	dict of {term (str): recall(float)}
 	'''
-	# get the term counts for all the terns
 	import itertools
 	debug(1, 'calculating recall')
 	recall = defaultdict(float)
-	# all_terms = set()
+
+	# get the term counts for all the terms and store in term_info
 	termslist = []
 	for cannotation in annotations.values():
 		cterms = get_terms(cannotation, term_types=term_types)
 		termslist.append(cterms)
-		# all_terms = all_terms.union(set(cterms))
 	# we use this as much faster than multiple unions
 	all_terms = set(itertools.chain.from_iterable(termslist))
-	# all_terms_positive = [x[1:] if x[0] == '-' else x for x in all_terms]
 	debug(1, 'total terms in all annotations: %d' % len(all_terms))
 
 	if term_info is None:
@@ -461,8 +459,8 @@ def get_term_pvals(annotations, seqannotations, term_info=None, ignore_exp=[], t
 
 	# TODO: fix this!!!!
 	total_db_annotations = 3925
-	print('total db annotations: %d' % total_db_annotations)
-	print('total annotations: %d' % total_annotations)
+	debug(2, 'total db annotations: %d' % total_db_annotations)
+	debug(2, 'total annotations: %d' % total_annotations)
 	pvals = {}
 	for cterm, cterm_counts in term_counts.items():
 		if cterm not in term_info:
