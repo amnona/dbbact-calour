@@ -39,7 +39,7 @@ def debug(level, msg):
 		logger.warning(msg)
 
 
-def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single'), threshold=None):
+def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single'), threshold=None, dbbact_server_url='https://api.dbbact.org'):
 	'''Get f score, recall and precision for set of annotations
 
 	Parameters
@@ -56,6 +56,8 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 		'pairs': all term pairs (i.e. 'feces+homo sapiens')
 	threshold: float or None, optional
 		if not None, return only terms that are significantly enriched in the annotations compared to complete database null with p-val <= threshold
+	dbbact_server_url: str, optional
+		the dbbact server url for getting the term_info for recall (if term_info is None)
 
 	Returns
 	-------
@@ -68,7 +70,7 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 	'''
 	debug(2, 'getting enrichment scores from %d sequences' % len(seqannotations))
 	debug(1, 'getting recall')
-	recall = get_recall(annotations, seqannotations, ignore_exp=ignore_exp, term_info=term_info, term_types=term_types)
+	recall = get_recall(annotations, seqannotations, ignore_exp=ignore_exp, term_info=term_info, term_types=term_types, dbbact_server_url=dbbact_server_url)
 	debug(1, 'getting precision')
 	precision = get_precision(annotations, seqannotations, ignore_exp=ignore_exp, term_types=term_types)
 	debug(1, 'getting term count from get_enrichent_score()')
@@ -147,7 +149,7 @@ def get_term_total_counts(annotations, seqannotations, ignore_exp=[], term_types
 	return term_exp_count
 
 
-def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], term_info=None, term_types=('single'), low_num_correction=1):
+def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], term_info=None, term_types=('single'), low_num_correction=1, dbbact_server_url='https://api.dbbact.org'):
 	'''Calculate the recall (what fraction of the database enteries for this term are covered by the query)
 
 	Parameters
@@ -161,6 +163,8 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 		The statistics about each term. if None, the function will contact dbbact to get the term_info
 	low_num_correction: int, optional
 		the constant to penalize low number of experiments in the recall. used as recall=obs/(total+low_num_correction)
+	dbbact_server_url: str, optional
+		the url of the dbbact server to use for getting the term_info if term_info is None
 
 	Returns
 	-------
@@ -181,7 +185,7 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 
 	if term_info is None:
 		debug(2, 'term_info was None, getting from dbbact')
-		term_info = get_term_info(list(all_terms), term_types=term_types)
+		term_info = get_term_info(list(all_terms), term_types=term_types, dbbact_server_url=dbbact_server_url)
 		# term_info = get_term_info(all_terms_positive, term_types=term_types)
 	else:
 		debug(1, 'term_info already supplied')
@@ -222,7 +226,7 @@ def get_recall(annotations, seqannotations, method='exp-mean', ignore_exp=[], te
 	return recall
 
 
-def get_term_info(terms, term_types=('single')):
+def get_term_info(terms, term_types=('single'), dbbact_server_url='https://api.dbbact.org'):
 	'''
 	Get the statistics about each term in annotations
 
@@ -230,6 +234,10 @@ def get_term_info(terms, term_types=('single')):
 	----------
 	terms: list of str
 		the terms to get the info about
+	term_types: list of str, optional
+		Not implemented yet
+	dbbact_server_url: str, optional
+		the url of the dbbact server to use for getting the term_info
 
 	Returns
 	-------
@@ -237,7 +245,7 @@ def get_term_info(terms, term_types=('single')):
 		The statistics about each term
 	'''
 	debug(2, 'getting term_info for %d terms' % len(terms))
-	res = requests.get(get_db_address() + '/ontology/get_term_stats', json={'terms': terms})
+	res = requests.get(dbbact_server_url + '/ontology/get_term_stats', json={'terms': terms})
 	if res.status_code != 200:
 		debug(6, 'error encountered in get_term_stats: %s' % res.reason)
 		return []
