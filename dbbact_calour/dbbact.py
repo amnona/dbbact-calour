@@ -390,7 +390,7 @@ class DBBact(Database):
                 if cseq not in features:
                     continue
                 term_scores[cseq] = defaultdict(float)
-                fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, term_types=term_method)
+                fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, term_types=term_method, dbbact_server_url=self.db.dburl)
                 if term_type == 'fscore':
                     use_score = fscore
                 elif term_type == 'recall':
@@ -1751,7 +1751,7 @@ class DBBact(Database):
         annotations = {str(k): v for k, v in annotations.items()}
 
         # calculate the recall, precision, fscore for each term
-        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
+        fscores, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, sequence_annotations, ignore_exp=ignore_exp, term_info=term_info, threshold=threshold, dbbact_server_url=self.db.dburl)
         return fscores, recall, precision, term_count, reduced_f
 
     def draw_wordcloud(self, exp=None, features=None, term_type='fscore', ignore_exp=None, width=2000, height=1000, freq_weighted=False, relative_scaling=0.5, focus_terms=None, threshold=None, max_id=None):
@@ -1916,7 +1916,7 @@ class DBBact(Database):
                 num_seqs_not_found += 1
                 continue
             annotations_list = sequence_annotations[cseq]
-            fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, threshold=threshold)
+            fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, threshold=threshold, term_types=term_types, dbbact_server_url=self.db.dburl)
             if len(fscore) == 0:
                 continue
             res[cseq] = {'fscore': fscore, 'precision': precision, 'recall': recall, 'term_count': term_count, 'reduced_f': reduced_f}

@@ -58,6 +58,7 @@ class DBAccess():
         self.username = username
         self.password = password
 
+        res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
         try:
             # check compatibility with dbBact server supported versions
             res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
