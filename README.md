@@ -3,5 +3,5 @@ Interface between the [dbBact](https://dbbact.org) database and [Calour](https:/
 
 The interface enables querying dbBact about amplicon sequences as well as doing term enrichment analysis.
 
-For details about dbBact, see [Nucleic Acids Research 2023](https://doi.org/10.1093/nar/gkad527)
+For details about dbBact, see [Nucleic Acids Research 2023](https://doi.org/10.1093/nar/gkad527) paper.
 
