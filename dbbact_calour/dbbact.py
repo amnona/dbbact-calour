@@ -1078,7 +1078,75 @@ class DBBact(Database):
             plt.xticks([], [])
         return plt.gcf()
 
-    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, focus_terms=None, use_exact=True, label_kwargs=None, show_group_names=True):
+
+    def get_term_sample_fscores(self, exp, terms, transform=None,ignore_exp=True, max_id=None, focus_terms=None):
+        '''Calculate the per-sample f-score for a given term (by weighing all sequences in each sample with a given transform)
+
+        Parameters
+        ----------
+        exp: calour.AmpliconExperiment
+            the experiment to plot
+        terms: str or list of str
+            the term(s) to get the f-scores for
+        transform: str or None, optional
+            the transformation to apply to the data before calculating the f-scores.
+            Each ASV, the associated f-score is weighted by the transformed frequency of each ASV in the sample
+            options are:
+            None - no transformation
+            'percent' - convert to percent per sample (sum to 100%)
+            'binarydata' - convert the data to binary (presence/absence)
+            'rankdata' - convert the data to ranks "(within each sample)
+            'log2data' - convert the data to log2(x)
+        ignore_exp: bool, or list of int or None, optional
+            if True, ignore the current experiment
+            if None, don't ignore any experiment
+            if list of int, ignore the experiments with the given ids
+        max_id: int or None, optional
+            the maximal annotationID to use for the f-scores analysis
+            if None, use all annotations
+        focus_terms: str or list of str or None, optional
+            if not None, only use annotations containing the given term(s) in the analysis
+        
+        Returns
+        -------
+        calour.AmpliocnExperiment
+            the experiment containing the f-scores for the samples in the sample_metadata['_dbbact_fscore_$TERM'] field (where $TERM is the term name)
+        '''
+        exp = exp.copy()
+        if isinstance(terms, str):
+            terms=[terms]
+
+        res=self.get_exp_feature_stats(exp, ignore_exp=ignore_exp, max_id=max_id)
+
+        # transform the reads count if needed
+        cdata = exp.get_data(sparse=False)
+        if transform is None:
+            pass
+        elif transform == 'percent':
+            cdata = cdata / cdata.sum(axis=1, keepdims=True) * 100
+        elif transform == 'binarydata':
+            cdata = (cdata > 0).astype(float)
+        elif transform == 'rankdata':
+            for ccol in range(cdata.shape[1]):
+                cdata[:, ccol] = scipy.stats.rankdata(cdata[:, ccol])
+        elif transform == 'log2data':
+            cdata[cdata<1] = 1
+            cdata = np.log2(cdata)
+        else:
+            raise ValueError('unknown transform %s' % transform)
+
+        for cterm in terms:
+            term_scores_vec = np.zeros([len(exp.feature_metadata)])
+            for idx, cfeature in enumerate(exp.feature_metadata.index.values):
+                cval = res.get(cfeature, {'fscore': {cterm: 0}})
+                term_scores_vec[idx] = cval['fscore'].get(cterm, 0)
+            
+            term_sample_scores = np.dot(cdata, term_scores_vec)
+            exp.sample_metadata['_dbbact_fscore_'+cterm]=term_sample_scores
+        return exp
+
+
+    def plot_term_venn_all(self, terms, exp, bacteria_groups=None, set_colors=('red', 'green', 'mediumblue'), colors_alpha=0.4, max_size=None, ignore_exp=[], max_id=None, focus_terms=None, use_exact=True, label_kwargs=None, show_group_names=True, term_names=None):
         '''Plot a venn diagram for all sequences appearing in any annotation containing the term, and intersect with both groups of bacteria
 
         Parameters
@@ -1115,6 +1183,17 @@ class DBBact(Database):
             parameters to pass to each subset number label (e.g. to pass to matplotlib.Text.set() )
         show_group_names: bool, optional
             True (default) to show the group names in the venn diagram
+        term_names: str of list of str or None, optional
+            if None, use the values in terms for the labels and title
+            if not None, use the values in term_name instead
+        
+        Returns
+        -------
+        matplotlib.figure: the figure containing the venn diagram
+        group_sizes: dict of {str: int}
+            the sizes of the venn subsets. Key is group1, group2, term where each is a binary 0/1 (i.e. 101 means group1 and term but not group2)
+        pval: float
+            the p-value for the difference between the overlap of the term with group1 and group2 (using fisher exact test)
         '''
         import matplotlib.pyplot as plt
         try:
@@ -1183,6 +1262,10 @@ class DBBact(Database):
 
         # get the term sequence ids
         terms = _to_list(terms)
+        if term_names is None:
+            term_names = terms
+        else:
+            term_names = _to_list(term_names)
         termids = None
 
         # # TODO: fix the lower in test
@@ -1210,7 +1293,9 @@ class DBBact(Database):
         vvals['011'] = og2
         vvals['111'] = oga
 
-        termstr = '+'.join(terms)
+        real_vvals = vvals.copy()
+
+        termstr = '+'.join(term_names)
         if not show_group_names:
             group1_name = ''
             group2_name = ''
@@ -1250,9 +1335,11 @@ class DBBact(Database):
             clab.set(color='w', fontweight='bold')
 
         plt.title('Sequences associated with ' + r'$\bf{' + termstr.replace(' ', ' \\ ') + '}$')
-        return f
+        pval = scipy.stats.fisher_exact([[og1, og2], [len(g1ids) - og1, len(g2ids) - og2]])[1]
+        return f, real_vvals, pval
 
-    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0):
+
+    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0, max_id=None, colors_alpha=0.4, show_labels=True, **label_kwargs):
         '''Plot a venn diagram for all annotations containing the term, showing overlap between the term and the two bacteria groups
         Parameters
         ----------
@@ -1267,15 +1354,22 @@ class DBBact(Database):
             Only include annotations that have at least min_prevalence overlap with either of the groups
         annotation_types: list of str or None, optional
             Only include annotations of types in the list. can contain:
-                'common', 'high_freq', 'diff', 'other'
+                'common', 'high_freq', 'diffexp', 'other'
             None to include all
-            Not implemented yet
         set_colors: tuple of str, optional
             Colors to use for group1. group2, annotation
         min_overlap: float, optional
             The minimal fraction of annotation bacteria that overlap with either of both groups in order to show annotation
         min_size: int, optional
             minimal number of bacteria in the annotation in order to show it
+        max_id: int or None, optional
+            the maximal annotationID to use or None to use all
+        colors_alpha: float, optional
+            The alpha value for the venn diagram circles
+        show_labels: bool, optional
+            True to show the labels for the circles
+        label_kwargs: dict or None, optional
+            kwargs to pass to the venn plot labels
 
         Returns
         -------
@@ -1304,6 +1398,9 @@ class DBBact(Database):
             term = term[1:]
         all_seqs = group1.copy()
         all_seqs.extend(group2)
+
+        res = self.add_all_annotations_to_exp(exp, max_id=max_id)
+
         tmat, tanno, tseqs = self.db.get_term_annotations(term, all_seqs, exp.databases['dbbact']['sequence_annotations'], exp.databases['dbbact']['annotations'])
         seq_group = np.ones(len(all_seqs))
         seq_group[:len(group1)] = 0
@@ -1314,8 +1411,16 @@ class DBBact(Database):
 
         import matplotlib.pyplot as plt
         all_figures = []
+        if annotation_types is not None:
+            annotation_types = set(annotation_types)
+        num_annotations_skipped = 0
         for idx2, canno in enumerate(newexp.feature_metadata.iterrows()):
             canno = canno[1]
+            if annotation_types is not None:
+                if canno['annotation_type'] not in annotation_types:
+                        logger.debug(2, 'skipping annotation %d since type %s not in annotation_types %s' % (canno['annotationid'], canno['annotation_type'], annotation_types))
+                        num_annotations_skipped += 1
+                        continue
             aseqs = self.db.get_annotation_sequences(int(canno['annotationid']))
             gg1 = set([exp.feature_metadata.index.get_loc(x) for x in group1])
             gg2 = set([exp.feature_metadata.index.get_loc(x) for x in group2])
@@ -1341,10 +1446,31 @@ class DBBact(Database):
                 continue
 
             f = plt.figure()
-            # venn3([gg1, gg2, anno_group], set_labels=(group1_name, group2_name, 'annotation'), set_colors=['mediumblue', 'r', 'g'])
-            venn3(vvals, set_labels=(group1_name, group2_name, 'annotation'), set_colors=set_colors)
+
+            # hide the labels if show_labels is False
+            if show_labels:
+                main_name = 'annotation'
+            else:
+                group1_name = ''
+                group2_name = ''
+                main_name = ''
+
+            vd = venn3(vvals, set_labels=(group1_name, group2_name, main_name), set_colors=set_colors, alpha=colors_alpha)
             plt.title('%s (expid %s)' % (canno['annotation'], canno['expid']))
+
+            if label_kwargs is not None:
+                for clab in vd.subset_labels:
+                    if clab is None:
+                        continue
+                    clab.set(**label_kwargs)
+
+            for idx, clab in enumerate(vd.set_labels):
+                clab.set_bbox(dict(facecolor=set_colors[idx], alpha=colors_alpha, edgecolor=set_colors[idx]))
+                clab.set(color='w', fontweight='bold')
+
             all_figures.append(f)
+        if num_annotations_skipped > 0:
+            logger.info('skipped %d annotations since not in annotation_types' % num_annotations_skipped)
         return all_figures
 
     def sample_enrichment(self, exp, field, value1, value2=None, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', freq_weight='rank', alpha=0.1, use_term_pairs=False, max_id=None, random_seed=None):

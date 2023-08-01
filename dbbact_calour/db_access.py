@@ -1849,6 +1849,7 @@ class DBAccess():
         terms : str or list of str
             The term to look for in the database. if list of str, look for annotations containing all terms
             if the term starts with '-', get only the annotations including the term in the LOWER IN terms
+            if the term starts with "+", get only the annotations including the term in the HIGHER IN terms
         ignore_exp: list of int, optional
             list of experiment ids to ignore when looking for the features
         focus_terms: list of str or None, optional
@@ -1867,10 +1868,14 @@ class DBAccess():
         # also create a set of all the terms starting with '-'
         new_terms = []
         negative_terms = set()
+        positive_terms = set()
         for cterm in terms:
             if cterm[0] == '-':
                 cterm = cterm[1:]
                 negative_terms.add(cterm)
+            elif cterm[0] == '+':
+                cterm = cterm[1:]
+                positive_terms.add(cterm)
             new_terms.append(cterm)
         terms = new_terms
 
@@ -1917,6 +1922,11 @@ class DBAccess():
                 if cdetail[1] in negative_terms:
                     if cdetail[0] != 'low':
                         logger.debug('annotation %d is not low but term %s starts with -' % (cannotation['annotationid'], cdetail[1]))
+                        num_bad_context_annotations += 1
+                        continue
+                elif cdetail[1] in positive_terms:
+                    if cdetail[0] != 'high':
+                        logger.debug('annotation %d is not high but term %s starts with +' % (cannotation['annotationid'], cdetail[1]))
                         num_bad_context_annotations += 1
                         continue
                 else:
