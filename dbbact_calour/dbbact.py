@@ -71,7 +71,7 @@ class DBBact(Database):
     db: DBAccess
         contains the calour independent dbbact access functions
     '''
-    def __init__(self, exp=None, dburl='http://api.dbbact.org', web_interface='http://dbbact.org'):
+    def __init__(self, exp=None, dburl='https://api.dbbact.org', web_interface='https://dbbact.org', test_version=True):
         '''
         Parameters
         ----------
@@ -81,15 +81,15 @@ class DBBact(Database):
             the web address for the dbbact REST API
         web_interface: str, optional
             web address for the dbBact website (non REST API) - used for getting/showing dbBact information page
+        test_version: bool, optional
+            True (default) to test the dbbact_calour version against the dbBact server supported versions
         '''
         super().__init__(database_name='dbBact', methods=['get', 'annotate', 'enrichment'])
         username = get_config_value('username', section='dbbact')
         password = get_config_value('password', section='dbbact')
         dburl = get_config_value('dburl', section='dbbact', fallback=dburl)
         web_interface = get_config_value('web_interface', section='dbbact', fallback=web_interface)
-        # dburl = 'http://127.0.0.1:5001'
-        # print('Using local database!!!!')
-        self.db = DBAccess(dburl=dburl, username=username, password=password)
+        self.db = DBAccess(dburl=dburl, username=username, password=password, test_version=test_version)
         self.web_interface = web_interface
 
     def version(self):
