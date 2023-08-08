@@ -41,7 +41,7 @@ class DBAccess():
     When creating the DBAcess class, it stores the rest api webserver address and the username/password, which are then used
     in all function calls from this class.
     '''
-    def __init__(self, dburl='http://api.dbbact.org', username=None, password=None, test_version=True):
+    def __init__(self, dburl='http://api.dbbact.org', username=None, password=None, test_version=False):
         '''Create the DBAccess class
 
         Parameters:
@@ -61,7 +61,6 @@ class DBAccess():
         self.password = password
 
         if test_version:
-            res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
             try:
                 # check compatibility with dbBact server supported versions
                 res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
