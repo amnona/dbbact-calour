@@ -41,7 +41,7 @@ class DBAccess():
     When creating the DBAcess class, it stores the rest api webserver address and the username/password, which are then used
     in all function calls from this class.
     '''
-    def __init__(self, dburl='http://api.dbbact.org', username=None, password=None):
+    def __init__(self, dburl='http://api.dbbact.org', username=None, password=None, test_version=True):
         '''Create the DBAccess class
 
         Parameters:
@@ -52,30 +52,33 @@ class DBAccess():
             Username or None for annonimous user
         password: str, optional
             None if username is None
+        test_version: bool, optional
+            True (default) to test the dbbact_calour version against the dbBact server supported versions
         '''
         self.dburl = dburl
 
         self.username = username
         self.password = password
 
-        res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
-        try:
-            # check compatibility with dbBact server supported versions
+        if test_version:
             res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
-            if res is None:
-                logger.warn('Could not validate dbbact_calour_version')
-                return
-            if 'min_version' in res:
-                if parse_version(res['min_version']) > parse_version(self.version()):
-                    logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
+            try:
+                # check compatibility with dbBact server supported versions
+                res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
+                if res is None:
+                    logger.warn('Could not validate dbbact_calour_version')
                     return
-            if 'current_version' in res:
-                if parse_version(res['current_version']) > parse_version(self.version()):
-                    logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
-                    logger.warn('(Current dbbact_calour version: %s)' % self.version())
-        except Exception as err:
-            logger.error('Connection to dbBact failed. Error: %s' % err)
-            return
+                if 'min_version' in res:
+                    if parse_version(res['min_version']) > parse_version(self.version()):
+                        logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
+                        return
+                if 'current_version' in res:
+                    if parse_version(res['current_version']) > parse_version(self.version()):
+                        logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
+                        logger.warn('(Current dbbact_calour version: %s)' % self.version())
+            except Exception as err:
+                logger.error('Connection to dbBact failed. Error: %s' % err)
+                return
 
     def version(self):
         '''Get the dbbact version
