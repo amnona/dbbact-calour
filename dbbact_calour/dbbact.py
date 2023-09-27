@@ -1339,7 +1339,7 @@ class DBBact(Database):
         return f, real_vvals, pval
 
 
-    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0, max_id=None, colors_alpha=0.4, show_labels=True, **label_kwargs):
+    def plot_term_annotations_venn(self, term, exp, bacteria_groups=None, min_prevalence=0, annotation_types=None, set_colors=('red', 'green', 'mediumblue'), min_overlap=0, min_size=0, max_id=None, colors_alpha=0.4, show_labels=True, label_kwargs=None):
         '''Plot a venn diagram for all annotations containing the term, showing overlap between the term and the two bacteria groups
         Parameters
         ----------
