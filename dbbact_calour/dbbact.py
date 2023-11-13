@@ -221,8 +221,10 @@ class DBBact(Database):
         ----------
         exp : ``Experiment``
             The experiment to get the details for and store them in
-        max_id: int or None, optional
-            if not None, limit results to annotation ids <= max_id
+        max_id: int or list of int or None, optional
+            if int, use only annotations with id<=max_id (for reproducible analysis ignoring new annotations)
+            if list of int, use only annotations with id present in the list
+            if None, use all annotations
         force: bool, optional
             if True, force re-adding the annotations to the experiment
             if False, add annotations only if not already added
@@ -1101,8 +1103,9 @@ class DBBact(Database):
             if True, ignore the current experiment
             if None, don't ignore any experiment
             if list of int, ignore the experiments with the given ids
-        max_id: int or None, optional
-            the maximal annotationID to use for the f-scores analysis
+        max_id: int or list of int or None, optional
+            if int, the maximal annotationID to use for the f-scores analysis (for reproducible results ignoring new annotations)
+            if list of int, use only annotations within the list
             if None, use all annotations
         focus_terms: str or list of str or None, optional
             if not None, only use annotations containing the given term(s) in the analysis
@@ -1126,12 +1129,15 @@ class DBBact(Database):
             cdata = cdata / cdata.sum(axis=1, keepdims=True) * 100
         elif transform == 'binarydata':
             cdata = (cdata > 0).astype(float)
+            cdata = cdata / cdata.sum(axis=1, keepdims=True)
         elif transform == 'rankdata':
             for ccol in range(cdata.shape[1]):
                 cdata[:, ccol] = scipy.stats.rankdata(cdata[:, ccol])
+            cdata = cdata / cdata.sum(axis=1, keepdims=True)
         elif transform == 'log2data':
             cdata[cdata<1] = 1
             cdata = np.log2(cdata)
+            cdata = cdata / cdata.sum(axis=1, keepdims=True)
         else:
             raise ValueError('unknown transform %s' % transform)
 
@@ -1141,7 +1147,7 @@ class DBBact(Database):
                 cval = res.get(cfeature, {'fscore': {cterm: 0}})
                 term_scores_vec[idx] = cval['fscore'].get(cterm, 0)
             
-            term_sample_scores = np.dot(cdata, term_scores_vec)
+            term_sample_scores = np.dot(cdata, term_scores_vec) / cdata.sum(axis=1)
             exp.sample_metadata['_dbbact_fscore_'+cterm]=term_sample_scores
         return exp
 
@@ -1171,8 +1177,10 @@ class DBBact(Database):
             List of experiments to ignore in the analysis
             True to ignore annotations from the current experiment
             None (default) to use annotations from all experiments including the current one
-        max_id: int or None, optional
-            if not None, limit results to annotation ids <= max_id
+        max_id: int or list of int or None, optional
+            if int, limit results to annotation ids <= max_id
+            if list, use only ids within the list
+            if None, use all annotations
         focus_terms: list of str or None, optional
             if not None, look only at annotations including all the focus terms
         use_exact: bool, optional
@@ -2004,6 +2012,10 @@ class DBBact(Database):
             'pairs': all term pairs (i.e. 'feces+homo sapiens')
         threshold: float or None, optional
             if not None, return only terms that are significantly enriched in the annotations compared to complete database null with p-val <= threshold
+        max_id: int or list of int or None, optional
+            if int, use only annotations with id<=max_id (for reproducible analysis ignoring new annotations)
+            if list of int, use only annotations with id present in the list
+            if None, use all annotations
 
         Returns
         -------

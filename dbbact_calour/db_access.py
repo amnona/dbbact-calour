@@ -941,8 +941,10 @@ class DBAccess():
             True to get all ontology parents for each annotation term.
         get_term_info: bool, optional
             True to get total annotation/experiments for each term appearing in the annotations
-        max_id: int or None, optional
-            if not None, limit results to annotation ids <= max_id
+        max_id: int or list of int or None, optional
+            if int, use only annotations with id<=max_id (for reproducible analysis ignoring new annotations)
+            if list of int, use only annotations with id present in the list
+            if None, use all annotations
 
         Returns
         -------
@@ -963,7 +965,11 @@ class DBAccess():
         '''
         logger.info('Getting dbBact annotations for %d sequences, please wait...' % len(sequences))
         if max_id is not None:
-            logger.info('Limited to maximal annotationid: %d' % max_id)
+            if isinstance(max_id, int):
+                logger.info('Limited to maximal annotationid: %d' % max_id)
+            else:
+                max_id = set(max_id)
+                logger.info('Limited to annotationids in list: %s' % max_id)
         if get_parents:
             logger.debug('Getting also parents')
         if get_term_info:
@@ -994,7 +1000,10 @@ class DBAccess():
             seq_annotation_ids = cseqannotation[1]
             # remove sequence annotations for annotations > max_id
             if max_id is not None:
-                seq_annotation_ids = [x for x in seq_annotation_ids if int(x) <= max_id]
+                if isinstance(max_id, int):
+                    seq_annotation_ids = [x for x in seq_annotation_ids if int(x) <= max_id]
+                else:
+                    seq_annotation_ids = [x for x in seq_annotation_ids if int(x) in max_id]
             sequence_annotations[cseq].extend(seq_annotation_ids)
             for cannotation in cseqannotation[1]:
                 for k, v in res['annotations'][str(cannotation)]['parents'].items():
@@ -1016,10 +1025,18 @@ class DBAccess():
             ignored = 0
             keys = list(annotations.keys())
             for cid in keys:
-                if cid > max_id:
-                    annotations.pop(cid)
-                    ignored += 1
-            logger.warning('ignoring %d annotation with id > max_id %d' % (ignored, max_id))
+                if isinstance(max_id, int):
+                    if cid > max_id:
+                        annotations.pop(cid)
+                        ignored += 1
+                else:
+                    if cid not in max_id:
+                        annotations.pop(cid)
+                        ignored += 1
+            if isinstance(max_id, int):
+                logger.warning('ignoring %d annotation with id > max_id %d' % (ignored, max_id))
+            else:
+                logger.warning('ignoring %d annotation with id not in max_id list %s' % (ignored, max_id))
 
         total_annotations = 0
         for cseq_annotations in sequence_annotations.values():
@@ -1856,6 +1873,10 @@ class DBAccess():
             if the term starts with "+", get only the annotations including the term in the HIGHER IN terms
         ignore_exp: list of int, optional
             list of experiment ids to ignore when looking for the features
+        max_id: int or list of int or None, optional
+            if int, use only annotations up to annotation id max_id (for reproducibility after dbBact gets more annotations)
+            if list of int, use only annotations with annotation id in max_id
+            if None, use all annotations
         focus_terms: list of str or None, optional
             if not None, look only at annotations including all the focus terms
 
@@ -1867,6 +1888,10 @@ class DBAccess():
         # convert to list if single term
         if isinstance(terms, str):
             terms = [terms]
+
+        # if max_id is a list of int, convert it to a set
+        if isinstance(max_id, list):
+            max_id = set(max_id)
 
         # remove the "-" for the terms
         # also create a set of all the terms starting with '-'
@@ -1907,9 +1932,15 @@ class DBAccess():
             if cannotation['expid'] in ignore_exp:
                 continue
             if max_id is not None:
-                if cannotation['annotationid'] > max_id:
-                    num_ignored_annotations += 1
-                    continue
+                # if max_id is a set, check if the annotation id is in the set
+                if isinstance(max_id, set):
+                    if cannotation['annotationid'] not in max_id:
+                        num_ignored_annotations += 1
+                        continue
+                else:
+                    if cannotation['annotationid'] > max_id:
+                        num_ignored_annotations += 1
+                        continue
             if focus_terms is not None:
                 found_focus_terms = set()
                 for cdetail in cannotation['details']:
