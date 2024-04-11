@@ -39,7 +39,7 @@ def debug(level, msg):
 		logger.warning(msg)
 
 
-def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single'), threshold=None, dbbact_server_url='https://api.dbbact.org'):
+def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single'), threshold=None, dbbact_server_url='https://api.dbbact.org', low_number_correction=0):
 	'''Get f score, recall and precision for set of annotations
 
 	Parameters
@@ -58,6 +58,9 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 		if not None, return only terms that are significantly enriched in the annotations compared to complete database null with p-val <= threshold
 	dbbact_server_url: str, optional
 		the dbbact server url for getting the term_info for recall (if term_info is None)
+	low_number_correction: int, optional
+		the constant to penalize low number of annotations in the precision. used as precision=obs/(total+low_number_correction)
+	
 
 	Returns
 	-------
@@ -72,7 +75,7 @@ def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=N
 	debug(1, 'getting recall')
 	recall = get_recall(annotations, seqannotations, ignore_exp=ignore_exp, term_info=term_info, term_types=term_types, dbbact_server_url=dbbact_server_url)
 	debug(1, 'getting precision')
-	precision = get_precision(annotations, seqannotations, ignore_exp=ignore_exp, term_types=term_types)
+	precision = get_precision(annotations, seqannotations, ignore_exp=ignore_exp, term_types=term_types, low_number_correction=low_number_correction)
 	debug(1, 'getting term count from get_enrichent_score()')
 	term_count = get_term_total_counts(annotations, seqannotations, ignore_exp=ignore_exp, term_types=term_types)
 	debug(1, 'calculating the enrichment scores')
@@ -254,7 +257,7 @@ def get_term_info(terms, term_types=('single'), dbbact_server_url='https://api.d
 	return term_info
 
 
-def get_precision(annotations, seqannotations, method='total-annotation', ignore_exp=[], term_types=('single')):
+def get_precision(annotations, seqannotations, method='total-annotation', ignore_exp=[], term_types=('single'), low_number_correction=0):
 	'''Calculate the precision (how many of the sequences contain the term) for each term in annotations.
 
 	Parameters
@@ -271,6 +274,9 @@ def get_precision(annotations, seqannotations, method='total-annotation', ignore
 		types of terms to use. can include the following (including combinations):
 			'single': use each term
 			'pairs': use term pairs
+	low_number_correction: int, optional
+		the constant to penalize low number of annotations in the precision. used as precision=obs/(total+low_number_correction)
+
 
 	Returns
 	-------
@@ -310,7 +316,7 @@ def get_precision(annotations, seqannotations, method='total-annotation', ignore
 			if cseq_total_annotations == 0:
 				continue
 			for cterm in cseq_term_counts.keys():
-				term_counts[cterm] += cseq_term_counts[cterm] / cseq_total_annotations
+				term_counts[cterm] += cseq_term_counts[cterm] / (cseq_total_annotations + low_number_correction)
 		precision = {}
 		total_seqs = len(seqannotations)
 		for cterm, cterm_counts in term_counts.items():

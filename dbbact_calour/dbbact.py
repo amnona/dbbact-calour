@@ -1808,7 +1808,7 @@ class DBBact(Database):
         ----------
         exp: calour.Experiment or None, optional
             The experiment containing the sequences (features) of interest.
-            None to not ise the experiment (get the annotations for the features supplied from dbbact and use them)
+            None to not use the experiment (get the annotations for the features supplied from dbbact and use them)
         features: list of str or None, optional
             None to use the features from exp. Otherwise, a list of features ('ACGT' sequences) that is a subset of the features in exp (if exp is supplied)
             Note: if exp is None, must provide features.
@@ -1936,7 +1936,7 @@ class DBBact(Database):
             from wordcloud import WordCloud
         except Exception as err:
             print(err)
-            raise ValueError("Error importing wordcloud module. Is it installed? If not, install it using: pip install git+git://github.com/amueller/word_cloud.git")
+            raise ValueError("Error importing wordcloud module. Is it installed? If not, install it using: pip install git+https://github.com/amueller/word_cloud.git")
 
         fscores, recall, precision, term_count, reduced_f = self.get_wordcloud_stats(exp=exp, features=features, ignore_exp=ignore_exp, freq_weighted=freq_weighted, focus_terms=focus_terms, threshold=threshold, max_id=max_id)
 
@@ -1996,7 +1996,7 @@ class DBBact(Database):
         fig.tight_layout()
         return fig
 
-    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None):
+    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None, low_number_correction=0):
         '''Get the recall/precision/f-score stats for each feature in the experiment
 
         Parameters
@@ -2016,6 +2016,9 @@ class DBBact(Database):
             if int, use only annotations with id<=max_id (for reproducible analysis ignoring new annotations)
             if list of int, use only annotations with id present in the list
             if None, use all annotations
+    	low_number_correction: int, optional
+	    	the constant to penalize low number of annotations in the precision. used as precision=obs/(total+low_number_correction)
+
 
         Returns
         -------
@@ -2054,7 +2057,7 @@ class DBBact(Database):
                 num_seqs_not_found += 1
                 continue
             annotations_list = sequence_annotations[cseq]
-            fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, threshold=threshold, term_types=term_types, dbbact_server_url=self.db.dburl)
+            fscore, recall, precision, term_count, reduced_f = get_enrichment_score(annotations, [(cseq, annotations_list)], ignore_exp=ignore_exp, term_info=term_info, threshold=threshold, term_types=term_types, dbbact_server_url=self.db.dburl, low_number_correction=low_number_correction)
             if len(fscore) == 0:
                 continue
             res[cseq] = {'fscore': fscore, 'precision': precision, 'recall': recall, 'term_count': term_count, 'reduced_f': reduced_f}
