@@ -309,6 +309,9 @@ class DBAccess():
                 cdesc = cdesc + ' ' + cdet[1] + ','
         if cann['description']:
             cdesc += ')'
+        # replace "\r" or "\n" with " "
+        cdesc = cdesc.replace('\r', ' ')
+        cdesc = cdesc.replace('\n', ' ')
         return cdesc
 
     def get_seq_annotation_strings(self, sequence, max_id=None, get_summary=True, sort_order=('other', 'contamination', 'diffexp', 'dominant', 'common')):

@@ -1996,7 +1996,47 @@ class DBBact(Database):
         fig.tight_layout()
         return fig
 
-    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None, low_number_correction=0):
+    def _filter_annotations(self, annotations, sequence_annotations, focus_terms):
+        '''Filter the annotations to keep only the ones containing all the focus_terms
+        
+        Parameters
+        ----------
+        annotations: dict of {annotation_id (int): annotation (dict)}
+            the annotations to filter
+        sequence_annotations: dict of {sequence_id (str): list of annotation_id (int)}
+            the annotations for each sequence
+        focus_terms: list of str or None
+            the terms to filter by. if None, return the original annotations
+            
+        Returns
+        -------
+        annotations: dict of {annotation_id (int): annotation (dict)}
+            the filtered annotations
+        sequence_annotations: dict of {sequence_id (str): list of annotation_id (int)}
+            the filtered annotations for each sequence'''
+
+        if focus_terms is not None:
+            annotations = annotations.copy()
+            sequence_annotations = sequence_annotations.copy()
+            focus_terms = set(focus_terms)
+            ok_annotations = {}
+            for cid, cannotation in annotations.items():
+                # check if all details appear in the annotation
+                found_terms = set()
+                for cdetail in cannotation['details']:
+                    if cdetail[1] in focus_terms:
+                        found_terms.add(cdetail[1])
+                if len(found_terms) == len(focus_terms):
+                    ok_annotations[cid] = cannotation
+            logger.info('keeping %d out of %d annotations with all the terms (%s)' % (len(ok_annotations), len(annotations), focus_terms))
+            # filter also the sequence_annotations to keep only the relevant annotations
+            for k, v in sequence_annotations.items():
+                nv = [x for x in v if x in ok_annotations]
+                sequence_annotations[k] = nv
+        return annotations, sequence_annotations
+
+
+    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None, low_number_correction=0, focus_terms=None, force=False):
         '''Get the recall/precision/f-score stats for each feature in the experiment
 
         Parameters
@@ -2018,7 +2058,11 @@ class DBBact(Database):
             if None, use all annotations
     	low_number_correction: int, optional
 	    	the constant to penalize low number of annotations in the precision. used as precision=obs/(total+low_number_correction)
-
+        focus_terms: list of str or None, optional
+            if not None, use only annotations containing terms from the list.
+            NOTE: this will may the recall/fscore calculations since they use the total_annotations/total_experiments per term which will be incorrect
+        force: bool, optional
+            if True, re-get the annotations from dbBact even if they are already in the experiment
 
         Returns
         -------
@@ -2031,7 +2075,7 @@ class DBBact(Database):
         reduced_f
         '''
         # if annotations not yet in experiment - add them
-        self.add_all_annotations_to_exp(exp, max_id=max_id, force=False)
+        self.add_all_annotations_to_exp(exp, max_id=max_id, force=force)
         # and filter only the ones relevant for features
         sequence_annotations = exp.databases['dbbact']['sequence_annotations']
         annotations = exp.databases['dbbact']['annotations']
@@ -2046,6 +2090,10 @@ class DBBact(Database):
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         if ignore_exp is None:
             ignore_exp = []
+
+        # filter based on focus_terms
+        if focus_terms is not None:
+            annotations, sequence_annotations = self._filter_annotations(annotations, sequence_annotations, focus_terms)
 
         # we need to rekey the annotations with an str (old problem...)
         annotations = {str(k): v for k, v in annotations.items()}
