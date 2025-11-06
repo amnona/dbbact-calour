@@ -158,6 +158,27 @@ class DBAccess():
         res = self._get('sequences/get_primers', rdata={})
         return res.json()['primers']
 
+    def get_all_annotations(self):
+        '''Get all annotations in the database
+        
+        Parameters
+        ----------
+        None
+        
+        Returns
+        -------
+        annotations : dict of {annotationid:int : annotation:dict}
+            key is annotationID, dict is the annotation details (see dbBact annotations/get_annotation REST API documentation)
+        '''
+        res = self._get('annotations/get_all_annotations', rdata={})
+        if res.status_code != 200:
+            logger.warn('error getting all annotations')
+            return {}
+        res = res.json()
+        annotations = res.get('annotations', {})
+        logger.debug('Got %d annotations' % len(annotations))
+        return annotations
+
     def get_seq_annotations(self, sequence, max_id=None):
         '''Get the annotations for a sequence
 
@@ -531,7 +552,7 @@ class DBAccess():
         elif score_method == 'sum':
             exp_annotations = None
         else:
-            logger.warn('score_method %s not supported' % score_method)
+            logger.warning('score_method %s not supported' % score_method)
             return None
 
         # print('annotations:')
@@ -595,7 +616,7 @@ class DBAccess():
             elif annotation_type == 'negative correlation':
                 ascore = 1
             else:
-                logger.warn('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
+                logger.warning('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
                 continue
 
             # temp_details = deepcopy(details)
@@ -873,9 +894,9 @@ class DBAccess():
             'OTHER' : other general observations (i.e. the sequences are known pathogens)
             'POSITIVE CORRELATION': the phenotype is positively correlated with the sequence (i.e. high growth rate when bacteria is present)
             'NEGATIVE CORRELATION': the phenotype is negatively correlated with the sequence (i.e. low growth rate when bacteria is present)
-        annotations : list of Type, Value
+        annotations : list of tuples of (Type, Value)
             The annotations to add to the AnnotationsList table (Type,Value).
-            Value is the ontology term to add
+            Value is the ontology term to add (i.e. 'NCBITAX:9616' or 'DOID:14330' etc.)
             Type can be:
             'ALL' : the ontology term applies to all samples
             'LOW' : the sequences are present less in samples with the ontology term
@@ -1294,6 +1315,7 @@ class DBAccess():
             'annotation' - the full annotation strings associated with each feature
             'combined' - combine 'term' and 'annotation'
             'sigterm' - count number of significant experiments with the term
+            callable - a function which takes (annotations, term_info, score_method, use_term_pairs) and returns a list of (term, score) and returns dict of {feature:str, list of tuples of (term:str, score:float)} key is feature, value is list of (term, score)
         ignore_exp: list of int or None or True(optional)
             List of experiments to ignore in the analysis
             None (default) to use annotations from all experiments including the current one
@@ -1463,6 +1485,9 @@ class DBAccess():
                 feature_terms[cseq] = [(str(x), 1) for x in cannotations]
             # each annotation by definition is in one experiment
             add_single_exp_warning = False
+        elif callable(term_type):
+            logger.debug('using custom callable for term_type')
+            feature_terms = term_type(exp_features, seq_annotations, all_annotations, ignore_exp=ignore_exp, term_info=term_info, score_method=score_method, use_term_pairs=use_term_pairs)
         else:
             raise ValueError('term_type %s not supported for dbbact. possible values are: "term", "parentterm", "annotation", "sigterm', "combined")
 
@@ -2307,4 +2332,30 @@ class DBAccess():
             logger.warn(msg)
             return msg
         logger.info('%d sequences removed from annotation %d deleted' % (len(features), annotationid))
+        return ''
+
+    def delete_experiment(self, expid):
+        '''Delete an experiment from the database
+        Tries to delete the experiment using the username/password from the config file.
+        A user can only delete experiments where he is created all the annotations
+        Otherwise, an error will be returned
+
+        Parameters
+        ----------
+        expid: int
+            the experiment id to delete
+
+        Returns
+        -------
+        str:
+            empty if ok, non empty string if error encountered
+        '''
+        rdata = {}
+        rdata['expId'] = expid
+        res = self._get('experiments/delete_experiment', rdata)
+        if res.status_code != 200:
+            msg = 'Delete experiment %d failed. error %s' % (expid, res.content)
+            logger.warn(msg)
+            return msg
+        logger.info('experiment %d deleted' % expid)
         return ''

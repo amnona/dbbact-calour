@@ -1564,6 +1564,9 @@ class DBBact(Database):
         newexp = self.sample_term_scores(exp, term_type=term_type, ignore_exp=ignore_exp, min_appearances=min_appearances, score_method=score_method, freq_weight=freq_weight, use_term_pairs=use_term_pairs, max_id=max_id, axis='s')
 
         # get the differentially abundant terms between the two sample groups
+        print('gagaa')
+        newexp = newexp.filter_sum_abundance(0,strict=True)
+        newexp.sparse=False
         dd = newexp.diff_abundance(field, value1, value2, fdr_method=fdr_method, transform='log2data', alpha=alpha, random_seed=random_seed)
         return dd
 
@@ -2036,7 +2039,7 @@ class DBBact(Database):
         return annotations, sequence_annotations
 
 
-    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None, low_number_correction=0, focus_terms=None, force=False):
+    def get_exp_feature_stats(self, exp, ignore_exp=None, term_info=None, term_types='single', threshold=None, max_id=None, low_number_correction=0, focus_terms=None, annotation_types=None, detail_types=None, force=False):
         '''Get the recall/precision/f-score stats for each feature in the experiment
 
         Parameters
@@ -2059,20 +2062,26 @@ class DBBact(Database):
     	low_number_correction: int, optional
 	    	the constant to penalize low number of annotations in the precision. used as precision=obs/(total+low_number_correction)
         focus_terms: list of str or None, optional
-            if not None, use only annotations containing terms from the list.
-            NOTE: this will may the recall/fscore calculations since they use the total_annotations/total_experiments per term which will be incorrect
+            if not None, use only annotations containing all terms from the list.
+            NOTE: this will partially invalidate the recall/fscore calculations since they use the total_annotations/total_experiments per term which will be incorrect
+        annotation_types: list of str or None, optional
+            if not None, use only annotations of the specified types (i.e. 'diffexp', 'common', 'dominant', 'contamination', 'other')
+            if None, use all annotations
+        detail_types: list of str or None, optional
+            if not None, use only terms of the specified types (i.e. 'high','low','all')
+            if None, use all terms
         force: bool, optional
             if True, re-get the annotations from dbBact even if they are already in the experiment
 
         Returns
         -------
         dict of {feature(str): {'fscore':, 'recall':, 'precision': , 'term_count':, 'reduced_f': }}
-        fscore: dict of {term(str): fscore(float)}
-        recall: dict of {term(str): recall(float)}
-        precision: dict of {term(str): precision(float)}
-        term_count: dict of {term(str): total experiments(float)}
-            the number of experiments where annotations for each term appear
-        reduced_f
+            fscore: dict of {term(str): fscore(float)}
+            recall: dict of {term(str): recall(float)}
+            precision: dict of {term(str): precision(float)}
+            term_count: dict of {term(str): total experiments(float)}
+                the number of experiments where annotations for each term appear
+            reduced_f
         '''
         # if annotations not yet in experiment - add them
         self.add_all_annotations_to_exp(exp, max_id=max_id, force=force)
@@ -2094,6 +2103,32 @@ class DBBact(Database):
         # filter based on focus_terms
         if focus_terms is not None:
             annotations, sequence_annotations = self._filter_annotations(annotations, sequence_annotations, focus_terms)
+
+        # filter based on annotation_types
+        if annotation_types is not None:
+            sequence_annotations = sequence_annotations.copy()
+            annotation_types = set(annotation_types)
+            ok_annotations = {}
+            for cid, cannotation in annotations.items():
+                if cannotation['annotationtype'] in annotation_types:
+                    ok_annotations[cid] = cannotation
+            logger.info('keeping %d out of %d annotations of types (%s)' % (len(ok_annotations), len(annotations), annotation_types))
+            annotations = ok_annotations
+            # filter also the sequence_annotations to keep only the relevant annotations
+            for k, v in sequence_annotations.items():
+                nv = [x for x in v if x in ok_annotations]
+                sequence_annotations[k] = nv
+
+        if detail_types is not None:
+            detail_types = set(detail_types)
+            annotations = annotations.copy()
+            for cid, cannotation in annotations.items():
+                new_details = []
+                for cdetail in cannotation['details']:
+                    if cdetail[0] in detail_types:
+                        new_details.append(cdetail)
+                cannotation['details'] = new_details
+                annotations[cid] = cannotation
 
         # we need to rekey the annotations with an str (old problem...)
         annotations = {str(k): v for k, v in annotations.items()}
