@@ -95,7 +95,7 @@ def show_enriched_terms_qt5(cdb, group1, group2=None, exp=None, max_id=None, gro
         all_features = set(group1).union(set(group2))
         bad_features = all_features.difference(exp_features)
         if len(bad_features) > 0:
-            logger.warning('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            logger.warninging('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
             group1 = list(set(group1).intersection(exp_features))
             group2 = list(set(group2).intersection(exp_features))
             if len(group1) == 0:
@@ -108,7 +108,7 @@ def show_enriched_terms_qt5(cdb, group1, group2=None, exp=None, max_id=None, gro
     if ignore_exp is True:
         ignore_exp = cdb.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
         if ignore_exp is None:
-            logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+            logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
         else:
             logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
     kwargs['ignore_exp'] = ignore_exp

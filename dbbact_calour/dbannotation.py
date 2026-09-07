@@ -77,7 +77,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
         cdata = study_data_ui(exp)
         if cdata is None:
             msg = 'no study information added. Please add at least one field. Annotation cancelled'
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
 
     show_and_ask('Please enter annotations for the study.\n'
@@ -143,15 +143,15 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
                 annotation_type = 'OTHER'
         else:
             msg = "No annotation type selected. Annotation not saved"
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
 
         logger.debug('Adding annotation to studyid %s' % cdata)
         err, annotation_id = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
         if err:
             msg = 'Annotation not added. error: %s' % err
-            logger.warn(msg)
-            QtWidgets.QMessageBox.warning(None, 'Annotation not added', msg)
+            logger.warning(msg)
+            QtWidgets.QMessageBox.warninging(None, 'Annotation not added', msg)
             return msg
         logger.debug('New annotation added. AnnotationId=%d' % annotation_id)
         err, annotation_res = dbclass.db.get_annotation(annotation_id)
@@ -160,7 +160,7 @@ def annotate_bacteria_gui(dbclass, seqs, exp):
             global history
             history[exp.info['data_md5']] = annotation_res
         else:
-            logger.warn('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotation_id)
+            logger.warning('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotation_id)
         return ''
     return 'Add annotation cancelled'
 
@@ -232,13 +232,13 @@ def update_annotation_gui(dbclass, annotation, exp):
                 annotation_type = 'OTHER'
         else:
             msg = "No annotation type selected. Annotation not saved"
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         logger.debug('Updating annotations for annotationid %d' % annotationid)
         res = dbclass.db.send_update_annotation(annotationid=annotationid, annotationtype=annotation_type, annotations=annotations, description=description, method=method)
         if res is None:
             msg = 'Annotation not updated.'
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         logger.debug('Annotation updated.')
 
@@ -248,7 +248,7 @@ def update_annotation_gui(dbclass, annotation, exp):
             global history
             history[exp.info['data_md5']] = annotation_res
         else:
-            logger.warn('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotationid)
+            logger.warning('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotationid)
         return ''
     return 'Update annotation cancelled'
 
@@ -272,7 +272,7 @@ def test_user_password(db):
         logger.debug('user/password not set, but show_user_request flag in config file is set, so ignoring')
         return
     logger.debug('no username in config file')
-    if QtWidgets.QMessageBox.warning(None, 'Register/login for better annotation', 'You can add annotations as an anonymous user, '
+    if QtWidgets.QMessageBox.warninging(None, 'Register/login for better annotation', 'You can add annotations as an anonymous user, '
                                            'or register/login in order to create non-anonymous annotations.\n'
                                            'NOTE: annonymous annotations can be modified/deleted by any user, '
                                            'whereas non-annonymous annotations can be modified/deleted only by the user who created them.\n\n'
@@ -293,8 +293,8 @@ def test_user_password(db):
             description = str(ui.interest.currentText())
             err = db.register_user(username, password, email=email, description=description, publish='n', name='')
             if err:
-                logger.warn(err)
-                QtWidgets.QMessageBox.warning(None, 'Login failed', 'login for user %s failed.\n'
+                logger.warning(err)
+                QtWidgets.QMessageBox.warninging(None, 'Login failed', 'login for user %s failed.\n'
                                                     'You are now logged in as anonymous user.' % username)
                 return
             QtWidgets.QMessageBox.information(None, 'Registered new user', 'New user %s registered in dbBact.\n'
@@ -307,7 +307,7 @@ def test_user_password(db):
                                                         'You can change the Calour dbBact user/password in the config file:\n'
                                                         '%s' % (username, get_config_file()))
             else:
-                QtWidgets.QMessageBox.warning(None, 'Login failed', 'login for user %s failed.\n'
+                QtWidgets.QMessageBox.warninging(None, 'Login failed', 'login for user %s failed.\n'
                                                     'You are now logged in as anonymous user.' % username)
                 return
 
@@ -363,10 +363,10 @@ def study_data_ui(cexp):
                 newstudydata.append((cdata['type'], cdata['value']))
 
         if len(allstudydata) <= 2:
-            logger.warn('not enough details. not saving anything')
+            logger.warning('not enough details. not saving anything')
             return None
         if len(newstudydata) == 0:
-            logger.warn('No new items. not saving anything')
+            logger.warning('No new items. not saving anything')
             return cid
         dataid = bdb.db.add_experiment_data(newstudydata, expid=cid)
         if dataid is None:
@@ -470,10 +470,10 @@ class DBStudyInfo(QtWidgets.QDialog):
                 newstudydata.append((cdata['type'], cdata['value']))
         # validate we have something else than the md5 for data/map
         if len(allstudydata) <= 2:
-            QtWidgets.QMessageBox.warning(self, 'Missing study information', 'Please enter an identifier for the study (name recommended)')
+            QtWidgets.QMessageBox.warninging(self, 'Missing study information', 'Please enter an identifier for the study (name recommended)')
             return 'Please enter an identifier for the study (name recommended)'
         if not name_found:
-            if QtWidgets.QMessageBox.warning(self, 'Study information missing', '"name" field not supplied Do you want to continue?',
+            if QtWidgets.QMessageBox.warninging(self, 'Study information missing', '"name" field not supplied Do you want to continue?',
                                              QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
                 return 'Missing name field'
         return ''
@@ -483,7 +483,7 @@ class DBStudyInfo(QtWidgets.QDialog):
         if err == '':
             self.done(1)
         else:
-            logger.warn(err)
+            logger.warning(err)
 
 
 class DBAnnotateSave(QtWidgets.QDialog):
@@ -704,7 +704,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
                             pickle.dump(contology_ids, ofl)
                             logger.debug('Created user ontology-ids file %s' % user_ontology_file)
             except AttributeError as e:
-                logger.warn('error encountered when updating user ontology files: %s' % e)
+                logger.warning('error encountered when updating user ontology files: %s' % e)
 
         if len(DBAnnotateSave._ontology_sorted_list) == 0:
             _changed = True
@@ -941,7 +941,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
             if conto_term_id is None:
                 conto_term_id = conto.split('(')[-1].split(' - ')[-1].split(')')[0]
                 if ':' not in conto_term_id:
-                    logger.warn('No ontology term_id in current string %s' % conto)
+                    logger.warning('No ontology term_id in current string %s' % conto)
             conto = self._ontology_from_id[self._ontology_dict[conto]]
         else:
             if conto_term_id is None:
@@ -992,7 +992,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         if err == '':
             self.done(1)
         else:
-            logger.warn(err)
+            logger.warning(err)
 
     def inputCheck(self):
         '''Validate we have enough information in the annotation
@@ -1005,12 +1005,12 @@ class DBAnnotateSave(QtWidgets.QDialog):
         '''
         # check we have details
         if len(list(qtlistiteritems(self.blistall))) == 0:
-            QtWidgets.QMessageBox.warning(self, 'Missing information', 'No entries in annotation')
+            QtWidgets.QMessageBox.warninging(self, 'Missing information', 'No entries in annotation')
             return ('No entries in annotation')
 
         # if small amount of details, verify
         if len(list(qtlistiteritems(self.blistall))) < 3:
-            if QtWidgets.QMessageBox.warning(self, 'Submit annotation?', 'Less than three entries for the annotation. Do you want to submit?',
+            if QtWidgets.QMessageBox.warninging(self, 'Submit annotation?', 'Less than three entries for the annotation. Do you want to submit?',
                                              QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
                 return 'Fill more entries'
 
@@ -1034,7 +1034,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
             if 'low' not in types:
                 msg = 'Missing "low" entries value for differential abundance'
             if msg is not None:
-                QtWidgets.QMessageBox.warning(self, 'Missing information', msg)
+                QtWidgets.QMessageBox.warninging(self, 'Missing information', msg)
                 return msg
         return ''
 
@@ -1161,7 +1161,7 @@ class UserPasswordDlg(QtWidgets.QDialog):
 
     def login_func(self):
         if self.email.text() == '':
-            if QtWidgets.QMessageBox.warning(self, 'email missing', 'No email supplied, you will not be able to recover your password.\nContinue?',
+            if QtWidgets.QMessageBox.warninging(self, 'email missing', 'No email supplied, you will not be able to recover your password.\nContinue?',
                                              QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.No:
                 return
         self.accept()
@@ -1319,7 +1319,7 @@ def new_term_parents_gui(dbclass, seqs, exp):
         cdata = study_data_ui(exp)
         if cdata is None:
             msg = 'no study information added. Please add at least one field. Annotation cancelled'
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
 
     show_and_ask('Please enter annotations for the study.\n'
@@ -1387,15 +1387,15 @@ def new_term_parents_gui(dbclass, seqs, exp):
                 annotation_type = 'OTHER'
         else:
             msg = "No annotation type selected. Annotation not saved"
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
 
         logger.debug('Adding annotation to studyid %s' % cdata)
         err, annotation_id = dbclass.db.add_annotations(expid=cdata, sequences=seqs, annotationtype=annotation_type, annotations=annotations, submittername=submittername, description=description, method=method, primerid=primerid)
         if err:
             msg = 'Annotation not added. error: %s' % err
-            logger.warn(msg)
-            QtWidgets.QMessageBox.warning(None, 'Annotation not added', msg)
+            logger.warning(msg)
+            QtWidgets.QMessageBox.warninging(None, 'Annotation not added', msg)
             return msg
         logger.debug('New annotation added. AnnotationId=%d' % annotation_id)
         err, annotation_res = dbclass.db.get_annotation(annotation_id)
@@ -1404,6 +1404,6 @@ def new_term_parents_gui(dbclass, seqs, exp):
             global history
             history[exp.info['data_md5']] = annotation_res
         else:
-            logger.warn('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotation_id)
+            logger.warning('Failed to get annotation for annotationID %d. please validate annotation was added to dbBact.' % annotation_id)
         return ''
     return 'Add annotation cancelled'

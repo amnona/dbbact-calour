@@ -95,7 +95,7 @@ class DBBact(Database):
         rdata['pwd'] = self.password
         res = requests.post(self.dburl + '/' + api, json=rdata)
         if res.status_code != 200:
-            logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
+            logger.warning('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
         return res
 
     def _get(self, api, rdata, param_json=True):
@@ -123,7 +123,7 @@ class DBBact(Database):
             res = requests.get(self.dburl + '/' + api, params=rdata)
 
         if res.status_code != 200:
-            logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
+            logger.warning('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
         return res
 
     def get_seq_annotations(self, sequence):
@@ -147,7 +147,7 @@ class DBBact(Database):
         rdata['sequence'] = sequence
         res = self._get('sequences/get_annotations', rdata)
         if res.status_code != 200:
-            logger.warn('error getting annotations for sequence %s' % sequence)
+            logger.warning('error getting annotations for sequence %s' % sequence)
             return []
         res = res.json()
         annotations = res.get('annotations')
@@ -325,7 +325,7 @@ class DBBact(Database):
         elif score_method == 'sum':
             exp_annotations = None
         else:
-            logger.warn('score_method %s not supported' % score_method)
+            logger.warning('score_method %s not supported' % score_method)
             return None
 
         # print('annotations:')
@@ -385,7 +385,7 @@ class DBBact(Database):
             elif annotation_type == 'diffexp':
                 ascore = 1
             else:
-                logger.warn('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
+                logger.warning('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
                 continue
 
             # temp_details = deepcopy(details)
@@ -429,7 +429,7 @@ class DBBact(Database):
                     cterm = '-' + cterm
                     cscore = 1
                 else:
-                    logger.warn('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
+                    logger.warning('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
 
                 if score_method == 'all_mean':
                     scale_factor = exp_annotations[cannotation['expid']][cterm]
@@ -499,7 +499,7 @@ class DBBact(Database):
                 continue
             if cannotation['annotationtype'] == 'other':
                 continue
-            logger.warn('unknown annotation type %s encountered' % cannotation['annotationtype'])
+            logger.warning('unknown annotation type %s encountered' % cannotation['annotationtype'])
         # now correct for common / uncommon terms
         for k, v in term_count.items():
             if k not in term_info:
@@ -541,7 +541,7 @@ class DBBact(Database):
         if mapmd5:
             details.append(['MapMD5', mapmd5])
         if not details:
-            logger.warn('Error. MapMD5 and DataMD5 both missing from find_experiment_id')
+            logger.warning('Error. MapMD5 and DataMD5 both missing from find_experiment_id')
             return None
 
         rdata = {}
@@ -550,11 +550,11 @@ class DBBact(Database):
         if res.status_code == 200:
             expids = res.json()['expId']
             if len(expids) == 0:
-                logger.warn('No experiment found matching the details %s' % details)
+                logger.warning('No experiment found matching the details %s' % details)
                 return None
             if not getall:
                 if len(expids) > 1:
-                    logger.warn('Problem. Found %d matches for data' % len(expids))
+                    logger.warning('Problem. Found %d matches for data' % len(expids))
                 logger.debug('Found experiment id %d' % expids[0])
                 return expids[0]
             logger.debug("Found %d matches to data" % len(expids))
@@ -606,7 +606,7 @@ class DBBact(Database):
         rdata['expId'] = expid
         res = self._get('experiments/get_annotations', rdata)
         if res.status_code != 200:
-            logger.warn('error getting annotations for experiment %d' % expid)
+            logger.warning('error getting annotations for experiment %d' % expid)
             return []
         annotations = res.json()['annotations']
         logger.debug('Found %d annotations for experiment %d' % (len(annotations), expid))
@@ -697,10 +697,10 @@ class DBBact(Database):
         """
         logger.debug('addannotation - %d sequences' % len(sequences))
         if len(sequences) == 0:
-            logger.warn('No sequences to annotate!')
+            logger.warning('No sequences to annotate!')
             return None
         if len(annotations) == 0:
-            logger.warn('No annotations to add!')
+            logger.warning('No annotations to add!')
             return None
 
         # add the annotation
@@ -720,7 +720,7 @@ class DBBact(Database):
             newid = res.json()['annotationId']
             logger.debug('Finished adding experiment id %d annotationid %d' % (expid, newid))
             return newid
-        logger.warn('problem adding annotations for experiment id %d' % expid)
+        logger.warning('problem adding annotations for experiment id %d' % expid)
         logger.debug(res.content)
         return None
 
@@ -783,7 +783,7 @@ class DBBact(Database):
         rdata['sequences'] = list(sequences)
         res = self._get('sequences/get_fast_annotations', rdata)
         if res.status_code != 200:
-            logger.warning('error getting fast annotations for sequence list. got status code %s' % res.status_code)
+            logger.warninging('error getting fast annotations for sequence list. got status code %s' % res.status_code)
             raise ValueError('error getting fast annotations for sequence list. got status code %s' % res.status_code)
         res = res.json()
 
@@ -840,7 +840,7 @@ class DBBact(Database):
         elif 'sequence' in annotation:
             address = '%s/sequence_annotations/%s' % (self.web_interface, annotation['sequence'])
         else:
-            logger.warning('Cannot show annotation info since no annotationid/sequence')
+            logger.warninging('Cannot show annotation info since no annotationid/sequence')
             return None
         return address
 
@@ -857,7 +857,7 @@ class DBBact(Database):
 
         address = self.get_annotation_website(annotation)
         if address is None:
-            logger.warning('Cannot find dbBact info address. Aborting')
+            logger.warninging('Cannot find dbBact info address. Aborting')
             return
         webbrowser.open(address, new=new)
 
@@ -1000,7 +1000,7 @@ class DBBact(Database):
         res = self._post('annotations/delete', rdata)
         if res.status_code != 200:
             msg = 'Deletion failed. error %s' % res.content
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         logger.info('annotation %d deleted' % annotationid)
         return ''
@@ -1100,7 +1100,7 @@ class DBBact(Database):
             logger.debug('Finished updating annotationid %d' % annotationid)
             return ''
         msg = 'problem updating annotationid %d: %s' % (annotationid, res.content)
-        logger.warn(msg)
+        logger.warning(msg)
         return msg
 
     def enrichment(self, exp, features, term_type='term', ignore_exp=None, min_appearances=3, fdr_method='dsfdr', score_method='all_mean', random_seed=None, use_term_pairs=False, alpha=0.1, method='meandiff', transform_type='rankdata', numperm=1000):
@@ -1174,7 +1174,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
@@ -1754,7 +1754,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
@@ -1860,7 +1860,7 @@ class DBBact(Database):
                 term_dist[cterm] = cscore
                 print('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
             except:
-                logger.warn('failed for term %s' % cterm)
+                logger.warning('failed for term %s' % cterm)
         return term_dist
 
     def get_db_term_features(self, term):
@@ -1879,7 +1879,7 @@ class DBBact(Database):
         rdata['term'] = term
         res = self._get('ontology/get_annotations', rdata, param_json=False)
         if res.status_code != 200:
-            logger.warn('error getting annotations for term %s' % term)
+            logger.warning('error getting annotations for term %s' % term)
             return []
         res = res.json()
         annotations = res.get('annotations')
@@ -1919,7 +1919,7 @@ class DBBact(Database):
         rdata['annotationid'] = annotationid
         res = self._get('annotations/get_sequences', rdata)
         if res.status_code != 200:
-            logger.warn('error getting sequences for annotationid %s' % annotationid)
+            logger.warning('error getting sequences for annotationid %s' % annotationid)
             return []
         res = res.json()
         seqids = res.get('seqids')
@@ -1945,7 +1945,7 @@ class DBBact(Database):
         rdata['seqids'] = seqids
         res = self._get('sequences/get_info', rdata)
         if res.status_code != 200:
-            logger.warn('error getting sequences for seqids %s' % seqids)
+            logger.warning('error getting sequences for seqids %s' % seqids)
             return []
         res = res.json()
         seqdat = res.get('sequences')
@@ -2029,7 +2029,7 @@ class DBBact(Database):
             vals = exp.feature_metadata['_calour_diff_abundance_group'].unique()
             group1_name = vals[0]
             if len(vals) > 2:
-                logger.warning('more than 2 values in _calour_diff_abundance_group field. showing first two')
+                logger.warninging('more than 2 values in _calour_diff_abundance_group field. showing first two')
                 group2_name = 'NOT %s' % vals[0]
             else:
                 group2_name = vals[1]

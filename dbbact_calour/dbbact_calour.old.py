@@ -304,7 +304,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
@@ -672,7 +672,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.exp_metadata['data_md5'], mapmd5=exp.exp_metadata['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 

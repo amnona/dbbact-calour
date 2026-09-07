@@ -72,16 +72,16 @@ class DBAccess():
                 # check compatibility with dbBact server supported versions
                 res = self._get('stats/get_supported_version', {'client': 'dbbact_calour'})
                 if res is None:
-                    logger.warn('Could not validate dbbact_calour_version')
+                    logger.warning('Could not validate dbbact_calour_version')
                     return
                 if 'min_version' in res:
                     if parse_version(res['min_version']) > parse_version(self.version()):
-                        logger.warn('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
+                        logger.warning('Current dbbact_calour version (%s) is not supported. please update at least to %s' % (self.version(), res['min_version']))
                         return
                 if 'current_version' in res:
                     if parse_version(res['current_version']) > parse_version(self.version()):
-                        logger.warn('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
-                        logger.warn('(Current dbbact_calour version: %s)' % self.version())
+                        logger.warning('A new dbbact_calour version (%s) is available. Update recommended' % res['current_version'])
+                        logger.warning('(Current dbbact_calour version: %s)' % self.version())
             except Exception as err:
                 logger.error('Connection to dbBact failed. Error: %s' % err)
                 return
@@ -114,7 +114,7 @@ class DBAccess():
         rdata['pwd'] = self.password
         res = requests.post(self.dburl + '/' + api, json=rdata)
         if res.status_code != 200:
-            logger.warn('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
+            logger.warning('REST error %s enountered when accessing dbBact %s' % (res.reason, api))
         return res
 
     def _get(self, api, rdata, param_json=True):
@@ -142,7 +142,7 @@ class DBAccess():
             res = requests.get(self.dburl + '/' + api, params=rdata)
 
         if res.status_code != 200:
-            logger.warn('REST error %s encountered when accessing dbBact %s' % (res.reason, api))
+            logger.warning('REST error %s encountered when accessing dbBact %s' % (res.reason, api))
         return res
 
     def get_primers(self):
@@ -177,7 +177,7 @@ class DBAccess():
         '''
         res = self._get('annotations/get_all_annotations', rdata={})
         if res.status_code != 200:
-            logger.warn('error getting all annotations')
+            logger.warning('error getting all annotations')
             return {}
         res = res.json()
         annotations = res.get('annotations', {})
@@ -209,7 +209,7 @@ class DBAccess():
         rdata['sequence'] = sequence
         res = self._get('sequences/get_annotations', rdata)
         if res.status_code != 200:
-            logger.warn('error getting annotations for sequence %s' % sequence)
+            logger.warning('error getting annotations for sequence %s' % sequence)
             return []
         res = res.json()
         annotations = res.get('annotations')
@@ -242,7 +242,7 @@ class DBAccess():
         res = self._get('annotations/get_annotation', rdata)
         if res.status_code != 200:
             msg = 'error getting annotation for annotation_id %d' % annotation_id
-            logger.warn(msg)
+            logger.warning(msg)
             return msg, {}
         res = res.json()
         annotation = res
@@ -557,7 +557,7 @@ class DBAccess():
         elif score_method == 'sum':
             exp_annotations = None
         else:
-            logger.warning('score_method %s not supported' % score_method)
+            logger.warninging('score_method %s not supported' % score_method)
             return None
 
         # print('annotations:')
@@ -621,7 +621,7 @@ class DBAccess():
             elif annotation_type == 'negative correlation':
                 ascore = 1
             else:
-                logger.warning('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
+                logger.warninging('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
                 continue
 
             # temp_details = deepcopy(details)
@@ -665,7 +665,7 @@ class DBAccess():
                     cterm = '-' + cterm
                     cscore = 1
                 else:
-                    logger.warn('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
+                    logger.warning('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
 
                 if score_method == 'all_mean':
                     scale_factor = exp_annotations[cannotation['expid']][cterm]
@@ -743,7 +743,7 @@ class DBAccess():
         if mapmd5:
             details.append(['MapMD5', mapmd5])
         if not details:
-            logger.warn('Error. MapMD5 and DataMD5 both missing from find_experiment_id')
+            logger.warning('Error. MapMD5 and DataMD5 both missing from find_experiment_id')
             return None
 
         rdata = {}
@@ -752,11 +752,11 @@ class DBAccess():
         if res.status_code == 200:
             expids = res.json()['expId']
             if len(expids) == 0:
-                logger.warn('No experiment found matching the details %s' % details)
+                logger.warning('No experiment found matching the details %s' % details)
                 return None
             if not getall:
                 if len(expids) > 1:
-                    logger.warn('Problem. Found %d matches for data' % len(expids))
+                    logger.warning('Problem. Found %d matches for data' % len(expids))
                 logger.debug('Found experiment id %d' % expids[0])
                 return expids[0]
             logger.debug("Found %d matches to data" % len(expids))
@@ -833,7 +833,7 @@ class DBAccess():
         rdata['expId'] = expid
         res = self._get('experiments/get_annotations', rdata)
         if res.status_code != 200:
-            logger.warn('error getting annotations for experiment %d' % expid)
+            logger.warning('error getting annotations for experiment %d' % expid)
             return []
         annotations = res.json()['annotations']
         logger.debug('Found %d annotations for experiment %d' % (len(annotations), expid))
@@ -929,11 +929,11 @@ class DBAccess():
         logger.debug('addannotation - %d sequences' % len(sequences))
         if len(sequences) == 0:
             msg = 'No sequences to annotate!'
-            logger.warn(msg)
+            logger.warning(msg)
             return msg, None
         if len(annotations) == 0:
             msg = 'No annotations to add!'
-            logger.warn(msg)
+            logger.warning(msg)
             return msg, None
 
         # add the annotation
@@ -953,8 +953,8 @@ class DBAccess():
             newid = res.json()['annotationId']
             logger.debug('Finished adding experiment id %d annotationid %d' % (expid, newid))
             return '', newid
-        logger.warn('problem adding annotations for experiment id %d' % expid)
-        logger.warn(res.content)
+        logger.warning('problem adding annotations for experiment id %d' % expid)
+        logger.warning(res.content)
         return res.content, None
 
     def get_seq_list_fast_annotations(self, sequences, get_taxonomy=False, get_parents=False, get_term_info=True, max_id=None):
@@ -1011,7 +1011,7 @@ class DBAccess():
         rdata['get_all_exp_annotations'] = False
         res = self._get('sequences/get_fast_annotations', rdata)
         if res.status_code != 200:
-            logger.warning('error getting fast annotations for sequence list. got status code %s' % res.status_code)
+            logger.warninging('error getting fast annotations for sequence list. got status code %s' % res.status_code)
             raise ValueError('error getting fast annotations for sequence list. got status code %s' % res.status_code)
         res = res.json()
         logger.info('got %d annotations' % len(res['annotations']))
@@ -1063,9 +1063,9 @@ class DBAccess():
                         annotations.pop(cid)
                         ignored += 1
             if isinstance(max_id, int):
-                logger.warning('ignoring %d annotation with id > max_id %d' % (ignored, max_id))
+                logger.warninging('ignoring %d annotation with id > max_id %d' % (ignored, max_id))
             else:
-                logger.warning('ignoring %d annotation with id not in max_id list %s' % (ignored, max_id))
+                logger.warninging('ignoring %d annotation with id not in max_id list %s' % (ignored, max_id))
 
         total_annotations = 0
         for cseq_annotations in sequence_annotations.values():
@@ -1106,7 +1106,7 @@ class DBAccess():
         res = self._post('annotations/delete', rdata)
         if res.status_code != 200:
             msg = 'Deletion failed. error %s' % res.content
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         logger.info('annotation %d deleted' % annotationid)
         return ''
@@ -1206,7 +1206,7 @@ class DBAccess():
             logger.debug('Finished updating annotationid %d' % annotationid)
             return ''
         msg = 'problem updating annotationid %d: %s' % (annotationid, res.content)
-        logger.warn(msg)
+        logger.warning(msg)
         return msg
 
     def _get_all_annotation_string_counts(self, features, all_annotations, seq_annotations, ignore_exp=None):
@@ -1551,7 +1551,7 @@ class DBAccess():
         # find which terms are significantly enriched in either of the two feature groups
         if method == 'card_mean':
             if transform_type is not None:
-                logger.warn('Using card_mean method for dbBact term enrichment but transform_type is not None is not recommended. Set transform_type to None')
+                logger.warning('Using card_mean method for dbBact term enrichment but transform_type is not None is not recommended. Set transform_type to None')
             # count the total number of annotations per feature
             per_feature_annotations = np.zeros([len(exp_features)])
             for idx, cfeature in enumerate(exp_features):
@@ -1739,7 +1739,7 @@ class DBAccess():
         res = self._get('ontology/get_all_terms', rdata)
         if res.status_code != 200:
             msg = 'Failed to get all ontology terms list. error %s' % res.content
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         terms = res.json()
         logger.debug('got %d new terms' % len(terms['ontology']))
@@ -1892,7 +1892,7 @@ class DBAccess():
                 term_dist[cterm] = cscore
                 logger.debug('oterm %d, cterm %d, common %d, score %f' % (len(term_features), len(cterm_f), common, cscore))
             except:
-                logger.warn('failed for term %s' % cterm)
+                logger.warning('failed for term %s' % cterm)
         return term_dist
 
     def get_db_term_features(self, terms, ignore_exp=(), max_id=None, focus_terms=None):
@@ -1947,7 +1947,7 @@ class DBAccess():
         rdata['term'] = terms
         res = self._get('ontology/get_annotations', rdata, param_json=False)
         if res.status_code != 200:
-            logger.warn('error getting annotations for term %s' % terms)
+            logger.warning('error getting annotations for term %s' % terms)
             return []
         res = res.json()
         annotations = res.get('annotations')
@@ -2055,7 +2055,7 @@ class DBAccess():
         rdata['term'] = terms
         res = self._get('ontology/get_annotations', rdata, param_json=False)
         if res.status_code != 200:
-            logger.warn('error getting annotations for term %s' % terms)
+            logger.warning('error getting annotations for term %s' % terms)
             return []
         return []
 
@@ -2084,7 +2084,7 @@ class DBAccess():
         rdata['sequences'] = sequences
         res = self._get('sequences/getid_list', rdata)
         if res.status_code != 200:
-            logger.warn('error getting sequenceids for %d sequences' % len(sequences))
+            logger.warning('error getting sequenceids for %d sequences' % len(sequences))
             return []
         res = res.json()
         seqids = res.get('seqIds')
@@ -2106,7 +2106,7 @@ class DBAccess():
         rdata['annotationid'] = annotationid
         res = self._get('annotations/get_sequences', rdata)
         if res.status_code != 200:
-            logger.warn('error getting sequences for annotationid %s' % annotationid)
+            logger.warning('error getting sequences for annotationid %s' % annotationid)
             return []
         res = res.json()
         seqids = res.get('seqids')
@@ -2132,7 +2132,7 @@ class DBAccess():
         rdata['seqids'] = seqids
         res = self._get('sequences/get_info', rdata)
         if res.status_code != 200:
-            logger.warn('error getting sequences for seqids %s' % seqids)
+            logger.warning('error getting sequences for seqids %s' % seqids)
             return []
         res = res.json()
         seqdat = res.get('sequences')
@@ -2297,7 +2297,7 @@ class DBAccess():
         rdata['sequences'] = sequences
         res = self._get('sequences/guess_region', rdata)
         if res.status_code != 200:
-            logger.warn('error getting sequences for sequences: %s' % res.content)
+            logger.warning('error getting sequences for sequences: %s' % res.content)
             return None
         res = res.json()
         if res['region'] == 'na':
@@ -2334,7 +2334,7 @@ class DBAccess():
         res = self._post('annotations/delete_sequences_from_annotation', rdata)
         if res.status_code != 200:
             msg = 'Delete sequeces from annotations failed. error %s' % res.content
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         logger.info('%d sequences removed from annotation %d deleted' % (len(features), annotationid))
         return ''
@@ -2360,7 +2360,7 @@ class DBAccess():
         res = self._get('experiments/delete_experiment', rdata)
         if res.status_code != 200:
             msg = 'Delete experiment %d failed. error %s' % (expid, res.content)
-            logger.warn(msg)
+            logger.warning(msg)
             return msg
         logger.info('experiment %d deleted' % expid)
         return ''

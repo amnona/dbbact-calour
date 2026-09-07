@@ -183,7 +183,7 @@ class DBBact(Database):
         elif 'sequence' in annotation:
             address = '%s/sequence_annotations/%s' % (self.web_interface, annotation['sequence'])
         else:
-            logger.warning('Cannot show annotation info since no annotationid/sequence')
+            logger.warninging('Cannot show annotation info since no annotationid/sequence')
             return None
         return address
 
@@ -200,7 +200,7 @@ class DBBact(Database):
 
         address = self.get_annotation_website(annotation)
         if address is None:
-            logger.warning('Cannot find dbBact info address. Aborting')
+            logger.warninging('Cannot find dbBact info address. Aborting')
             return
         webbrowser.open(address, new=new)
 
@@ -332,7 +332,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
@@ -625,7 +625,7 @@ class DBBact(Database):
         exp_features = set(exp.feature_metadata.index.values)
         bad_features = set(features).difference(exp_features)
         if len(bad_features) > 0:
-            logger.warning('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            logger.warninging('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
             features = list(set(features).intersection(exp_features))
             if len(features) == 0:
                 raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
@@ -637,7 +637,7 @@ class DBBact(Database):
 
         bad_features = set(bg_features).difference(exp_features)
         if len(bad_features) > 0:
-            logger.warning('Some of the bg_features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            logger.warninging('Some of the bg_features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
             bg_features = list(set(bg_features).intersection(exp_features))
             if len(bg_features) == 0:
                 raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
@@ -654,7 +654,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
@@ -783,7 +783,7 @@ class DBBact(Database):
         exp_features = set(exp.feature_metadata.index.values)
         bad_features = set(features).difference(exp_features)
         if len(bad_features) > 0:
-            logger.warning('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
+            logger.warninging('Some of the features for enrichment are not in the experiment. Ignoring %d features' % len(bad_features))
             features = list(set(features).intersection(exp_features))
             if len(features) == 0:
                 raise ValueError("No features left after ignoring. Please make sure you test for enrichment with features from the experiment.")
@@ -797,7 +797,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         kwargs['ignore_exp'] = ignore_exp
@@ -1263,7 +1263,7 @@ class DBBact(Database):
                 raise ValueError('Cannot ignore current experiment when exp=None. Please explicitly specify ignore_exp=[ID1,ID2...]')
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
                 ignore_exp = []
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
@@ -1315,7 +1315,7 @@ class DBBact(Database):
         if max_size is not None:
             if vvals['001'] > max_size:
                 max_used = vvals['001']
-                logger.warn('Clipped term circle size to %d. Real size (number of term seqs not overlapping) should be: %d' % (max_size, len(termids) - og1 - og2))
+                logger.warning('Clipped term circle size to %d. Real size (number of term seqs not overlapping) should be: %d' % (max_size, len(termids) - og1 - og2))
                 vvals['001'] = max_size
 
         # for k, v in vvals.items():
@@ -1634,7 +1634,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
 
@@ -1878,7 +1878,7 @@ class DBBact(Database):
                 raise ValueError('Cannot use ignore_exp=True when exp is not supplied')
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         if ignore_exp is None:
@@ -2094,7 +2094,7 @@ class DBBact(Database):
         if ignore_exp is True:
             ignore_exp = self.db.find_experiment_id(datamd5=exp.info['data_md5'], mapmd5=exp.info['sample_metadata_md5'], getall=True)
             if ignore_exp is None:
-                logger.warn('No matching experiment found in dbBact. Not ignoring any experiments')
+                logger.warning('No matching experiment found in dbBact. Not ignoring any experiments')
             else:
                 logger.info('Found %d experiments (%s) matching current experiment - ignoring them.' % (len(ignore_exp), ignore_exp))
         if ignore_exp is None:
@@ -2146,7 +2146,7 @@ class DBBact(Database):
             res[cseq] = {'fscore': fscore, 'precision': precision, 'recall': recall, 'term_count': term_count, 'reduced_f': reduced_f}
 
         if num_seqs_not_found > 0:
-            logger.warn('%d sequences not found in database data' % num_seqs_not_found)
+            logger.warning('%d sequences not found in database data' % num_seqs_not_found)
         return res
 
     def get_enrichment_score(self, *kargs, **kwargs):

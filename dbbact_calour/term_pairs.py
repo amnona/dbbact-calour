@@ -36,7 +36,7 @@ def debug(level, msg):
 	elif level < 7:
 		logger.info(msg)
 	else:
-		logger.warning(msg)
+		logger.warninging(msg)
 
 
 def get_enrichment_score(annotations, seqannotations, ignore_exp=[], term_info=None, term_types=('single'), threshold=None, dbbact_server_url='https://api.dbbact.org', low_number_correction=0):

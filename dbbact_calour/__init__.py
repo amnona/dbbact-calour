@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from logging import getLogger, NOTSET, basicConfig
 
 __credits__ = "https://github.com/amnona/dbbact-calour/graphs/contributors"
-__version__ = '2025.11.06'
+__version__ = '2026.09.07'
 
 
 def get_resource_filename(package, resource):

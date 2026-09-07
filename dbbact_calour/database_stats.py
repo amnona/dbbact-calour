@@ -162,7 +162,7 @@ def _get_all_term_counts(features, feature_annotations, annotations, ignore_exp=
     elif score_method == 'sum':
         exp_annotations = None
     else:
-        logger.warn('score_method %s not supported' % score_method)
+        logger.warning('score_method %s not supported' % score_method)
         return None
 
     # print('annotations:')
@@ -268,7 +268,7 @@ def get_annotation_term_counts(annotations, exp_annotations=None, score_method='
         elif annotation_type == 'diffexp':
             cscore = None
         else:
-            logger.warn('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
+            logger.warning('unknown annotation type %s encountered (annotationid %d). skipped' % (annotation_type, cannotation['annotationid']))
             continue
         for cdetail in details:
             ctype = cdetail[0]
@@ -282,7 +282,7 @@ def get_annotation_term_counts(annotations, exp_annotations=None, score_method='
                 cterm = '-' + cterm
                 cscore = 1
             else:
-                logger.warn('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
+                logger.warning('unknown detail type %s encountered for annotation %d' % (ctype, cannotation['annotationid']))
 
             if score_method == 'all_mean':
                 scale_factor = exp_annotations[cannotation['expid']][cterm]
