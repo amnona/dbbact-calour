@@ -27,7 +27,7 @@ from collections import defaultdict
 from logging import getLogger, NOTSET, basicConfig
 from logging.config import fileConfig
 from copy import deepcopy
-from pkg_resources import resource_filename
+from . import get_resource_filename
 
 import numpy as np
 import pandas as pd
@@ -41,7 +41,7 @@ logger = getLogger(__name__)
 
 try:
     # get the logger config file location
-    log = resource_filename(__name__, 'log.cfg')
+    log = get_resource_filename(__name__, 'log.cfg')
     # log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
     # set the logger output according to log.cfg
     # setting False allows other logger to print log.

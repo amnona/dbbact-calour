@@ -1,5 +1,4 @@
 from logging import getLogger
-from pkg_resources import resource_filename
 import pickle
 import sys
 import os
@@ -12,7 +11,7 @@ from PyQt5.QtWidgets import QApplication, QVBoxLayout, QListWidget, QDialogButto
 import pandas as pd
 from calour.util import get_config_value, set_config_value, get_config_file
 
-from . import dbbact
+from . import dbbact, get_resource_filename
 
 logger = getLogger(__name__)
 
@@ -393,7 +392,7 @@ class DBStudyInfo(QtWidgets.QDialog):
             usually init to the data_d5 and sample_metadata_md5
         '''
         super(DBStudyInfo, self).__init__()
-        uic.loadUi(resource_filename(__package__, 'ui/studyinfo.ui'), self)
+        uic.loadUi(get_resource_filename(__package__, 'ui/studyinfo.ui'), self)
         self.dataid = 0
         bdb = dbbact.DBBact()
 
@@ -524,7 +523,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
         super(DBAnnotateSave, self).__init__()
 
         # create the gui
-        uic.loadUi(resource_filename(__package__, 'ui/manualdata.ui'), self)
+        uic.loadUi(get_resource_filename(__package__, 'ui/manualdata.ui'), self)
         self.bplus.clicked.connect(self.plus)
         self.bminus.clicked.connect(self.minus)
         self.bontoinput.returnPressed.connect(self.plus)
@@ -632,7 +631,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
             DBAnnotateSave._ontology_from_id = {}
             DBAnnotateSave._ontology_dict = {}
             logger.info('Loading ontology autocomplete')
-            ontology_dir = resource_filename(__package__, 'data')
+            ontology_dir = get_resource_filename(__package__, 'data')
             for cfile in os.listdir(ontology_dir):
                 if not cfile.endswith('.ontology.pickle'):
                     continue
@@ -680,7 +679,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
                     logger.info('found %d new ontology terms. updating local file' % len(new_terms_names))
                     # load the existing, update and save for updated_terms.ontology.pickle
                     # it is {autocomplete_term_name(str): id(int)}
-                    user_ontology_file = resource_filename(__package__, 'data/updated_terms.ontology.pickle')
+                    user_ontology_file = get_resource_filename(__package__, 'data/updated_terms.ontology.pickle')
                     if os.path.isfile(user_ontology_file):
                         logger.debug('loading user ontology file')
                         contology = pickle.load(open(user_ontology_file, 'rb'))
@@ -693,7 +692,7 @@ class DBAnnotateSave(QtWidgets.QDialog):
                             logger.debug('Created user ontology file %s' % user_ontology_file)
                     # load the existing, update and save for updated_terms.ontology.pickle
                     # it is {autocomplete_term_name(str): id(int)}
-                    user_ontology_file = resource_filename(__package__, 'data/updated_terms.ontology.ids.pickle')
+                    user_ontology_file = get_resource_filename(__package__, 'data/updated_terms.ontology.ids.pickle')
                     if os.path.isfile(user_ontology_file):
                         logger.debug('loading user ontology id file %s' % user_ontology_file)
                         contology_ids = pickle.load(open(user_ontology_file, 'rb'))
@@ -1156,7 +1155,7 @@ class UserPasswordDlg(QtWidgets.QDialog):
 
         '''
         super().__init__()
-        uic.loadUi(resource_filename(__package__, 'ui/user_password.ui'), self)
+        uic.loadUi(get_resource_filename(__package__, 'ui/user_password.ui'), self)
         self.login.clicked.connect(self.login_func)
         self.anonymous.clicked.connect(self.anonymous_func)
 

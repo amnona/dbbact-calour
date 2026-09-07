@@ -19,7 +19,7 @@ Functions
 import requests
 from collections import defaultdict
 from logging import getLogger
-from pkg_resources import parse_version
+import re
 
 import numpy as np
 import pandas as pd
@@ -30,6 +30,11 @@ from .term_pairs import get_enrichment_score
 from . import __version__
 
 logger = getLogger(__name__)
+
+
+def parse_version(version):
+    '''Return a comparable representation of a package version.'''
+    return tuple(int(part) for part in re.findall(r'\d+', version))
 
 
 class DBAccess():

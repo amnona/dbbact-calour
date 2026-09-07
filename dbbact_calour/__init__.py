@@ -1,16 +1,25 @@
-from pkg_resources import resource_filename
+import importlib
+import os
 from logging.config import fileConfig
 from logging import getLogger, NOTSET, basicConfig
 
 __credits__ = "https://github.com/amnona/dbbact-calour/graphs/contributors"
 __version__ = '2025.11.06'
 
+
+def get_resource_filename(package, resource):
+	'''Return the filesystem path for a package resource.'''
+	module = importlib.import_module(package)
+	if module.__file__ is None:
+		raise ImportError('Package %s has no filesystem location' % package)
+	return os.path.join(os.path.dirname(module.__file__), resource)
+
 # from .dbbact import DBBact
 
 # load the logger config
 try:
 	# get the logger config file location
-	log_file = resource_filename(__package__, 'log.cfg')
+	log_file = get_resource_filename(__package__, 'log.cfg')
 	# log = path.join(path.dirname(path.abspath(__file__)), 'log.cfg')
 	# set the logger output according to log.cfg
 	# setting False allows other logger to print log.
